@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 4 — Deploy &amp; Inspect a Self-Managed Node Group</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 780px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e;
+         line-height: 1.7; background: #fafbfc; }
+  h1 { font-size: 1.8rem; color: #0f3460; margin-bottom: 0.3rem; }
+  .lesson-meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  h2 { font-size: 1.3rem; color: #0f3460; margin: 2.5rem 0 0.8rem;
+       padding-bottom: 0.3rem; border-bottom: 2px solid #e94560; }
+  h3 { font-size: 1.05rem; color: #16213e; margin: 1.5rem 0 0.5rem; }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin: 0 0 1rem 1.5rem; }
+  li { margin-bottom: 0.4rem; }
+  code { background: #e8ecf1; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 1rem 1.2rem; border-radius: 6px;
+        overflow-x: auto; margin: 1rem 0; font-size: 0.82rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .cm { color: #6a9955; }
+  .hl { color: #dcdcaa; }
+  .str { color: #ce9178; }
+  .kw { color: #569cd6; }
+
+  .callout { border-left: 4px solid; padding: 0.8rem 1rem; margin: 1.2rem 0;
+             border-radius: 0 6px 6px 0; }
+  .callout-info { background: #e8f4fd; border-color: #2196F3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout-key { background: #e8f5e9; border-color: #4caf50; }
+  .callout-bootc { background: #f3e5f5; border-color: #9c27b0; }
+  .callout-do { background: #e3f2fd; border-color: #1565c0; }
+  .callout strong { display: block; margin-bottom: 0.3rem; }
+
+  .step { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+          padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .step-num { display: inline-block; background: #0f3460; color: #fff;
+              width: 28px; height: 28px; border-radius: 50%; text-align: center;
+              line-height: 28px; font-size: 0.85rem; font-weight: bold;
+              margin-right: 0.5rem; vertical-align: middle; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.92rem; }
+  th { background: #0f3460; color: #fff; text-align: left; padding: 0.6rem; }
+  td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
+
+  .cite { font-size: 0.8rem; color: #666; }
+  .cite a { color: #2196F3; }
+
+  .diagram { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+             padding: 1.5rem; margin: 1.5rem 0; font-family: 'Courier New', monospace;
+             font-size: 0.78rem; line-height: 1.35; white-space: pre; overflow-x: auto; }
+
+  details { margin: 0.8rem 0; }
+  details summary { cursor: pointer; font-weight: 600; color: #0f3460;
+                    padding: 0.4rem 0; }
+  details summary:hover { color: #e94560; }
+  details > div { padding: 0.5rem 0 0.5rem 1rem; border-left: 2px solid #ddd; margin-top: 0.3rem; }
+
+  .checklist { list-style: none; margin-left: 0; }
+  .checklist li { padding: 0.3rem 0; }
+  .checklist li::before { content: "☐ "; font-size: 1.1em; }
+
+  .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #ddd;
+            color: #888; font-size: 0.85rem; }
+  .footer a { color: #2196F3; }
+
+  @media print {
+    body { max-width: 100%; margin: 0; }
+    .step { break-inside: avoid; }
+    pre { white-space: pre-wrap; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Lesson 4: Deploy &amp; Inspect a Self-Managed Node Group</h1>
+<p class="lesson-meta">~35 min · Requires AWS account · Hands-on with real infrastructure · <strong>Remember to clean up!</strong></p>
+
+<p>You've learned the theory — node group types, the bootstrap contract, <code>nodeadm</code>, <code>NodeConfig</code>. Now you'll <strong>deploy a self-managed node group with an official EKS AMI</strong>, then <strong>inspect every layer</strong> of what eksctl created. By the end, you'll know exactly what to change when you swap in your bootc AMI.</p>
+
+<div class="callout callout-key">
+  <strong>🎯 What you'll be able to do after this lesson</strong>
+  <ul style="margin-bottom: 0;">
+    <li>Deploy a self-managed node group using eksctl</li>
+    <li>Inspect the launch template and decode the user data (NodeConfig)</li>
+    <li>Verify node registration and inspect kubelet's configuration</li>
+    <li>Shell into the node and inspect nodeadm logs, kubelet config, containerd, and the bootstrap artifacts</li>
+    <li>Trace the full path from eksctl config → CloudFormation → launch template → running node</li>
+  </ul>
+</div>
+
+<h2>The Config File</h2>
+
+<p>Create a file called <code>cluster-selfmanaged.yaml</code>. This is your complete cluster config — control plane plus one self-managed node group:</p>
+
+<div class="step">
+<p><span class="step-num">1</span> <strong>Create the eksctl config file</strong></p>
+
+<pre><code><span class="cm"># cluster-selfmanaged.yaml</span>
+<span class="kw">apiVersion</span>: eksctl.io/v1alpha5
+<span class="kw">kind</span>: ClusterConfig
+
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">jlebon</span>
+  <span class="kw">region</span>: <span class="str">ca-central-1</span>
+  <span class="kw">version</span>: <span class="str">"1.36"</span>
+
+<span class="cm"># No managedNodeGroups — we're using nodeGroups (self-managed)</span>
+<span class="kw">nodeGroups</span>:
+  - <span class="kw">name</span>: <span class="str">jlebon-selfmanaged</span>
+    <span class="kw">instanceType</span>: <span class="str">t3.medium</span>
+    <span class="kw">desiredCapacity</span>: 1       <span class="cm"># one node is enough to learn</span>
+    <span class="kw">minSize</span>: 1
+    <span class="kw">maxSize</span>: 2
+    <span class="kw">amiFamily</span>: <span class="str">AmazonLinux2023</span>
+    <span class="kw">privateNetworking</span>: true  <span class="cm"># nodes in private subnets</span>
+    <span class="kw">ssh</span>:
+      <span class="kw">enableSsm</span>: true       <span class="cm"># access the node via SSM Session Manager</span></code></pre>
+
+<p>Key differences from lesson 2's config:</p>
+<ul>
+  <li><code>nodeGroups</code> instead of <code>managedNodeGroups</code> — this creates a <strong>self-managed</strong> node group</li>
+  <li><code>amiFamily: AmazonLinux2023</code> — tells eksctl to use <code>nodeadm</code>-style bootstrap</li>
+  <li><code>desiredCapacity: 1</code> — keep costs minimal while learning</li>
+  <li><code>ssh.enableSsm: true</code> — enables <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html">SSM Session Manager</a> access so we can shell into the node (works even in private subnets — no SSH key or bastion needed)</li>
+</ul>
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/eksctl/nodegroups.html">eksctl: Nodegroups</a>, <a href="https://docs.aws.amazon.com/eks/latest/eksctl/node-bootstrapping.html">eksctl: Node bootstrapping</a></p>
+
+<h2>Deploy the Cluster</h2>
+
+<div class="step">
+<p><span class="step-num">2</span> <strong>Create the cluster</strong></p>
+
+<pre><code>eksctl create cluster -f cluster-selfmanaged.yaml</code></pre>
+
+<p>This will take ~15 minutes. While it runs, eksctl creates <strong>two CloudFormation stacks</strong>:</p>
+
+<table>
+  <tr><th>Stack</th><th>What it creates</th></tr>
+  <tr>
+    <td><code>eksctl-jlebon-cluster</code></td>
+    <td>VPC, subnets, NAT gateway, internet gateway, EKS control plane, cluster security group, IAM roles</td>
+  </tr>
+  <tr>
+    <td><code>eksctl-jlebon-nodegroup-jlebon-selfmanaged</code></td>
+    <td>Launch template, Auto Scaling Group, node IAM role, instance profile, node security group</td>
+  </tr>
+</table>
+
+<div class="callout callout-info">
+  <strong>ℹ️ Self-managed vs managed: what's different here</strong>
+  With managed node groups (<code>managedNodeGroups</code>), eksctl tells the EKS API to create the node group — AWS creates the ASG and launch template. With self-managed (<code>nodeGroups</code>), eksctl creates all of this <em>itself</em> via CloudFormation. The EKS API never knows about a "node group" entity — it just sees individual EC2 instances joining the cluster.
+</div>
+
+<p>Watch for the final output line:</p>
+<pre><code>EKS cluster "jlebon" in "ca-central-1" region is ready</code></pre>
+</div>
+
+<h2>Verify the Node Joined</h2>
+
+<div class="step">
+<p><span class="step-num">3</span> <strong>Check node status</strong></p>
+
+<pre><code><span class="cm"># List nodes — you should see one in Ready state</span>
+kubectl get nodes -o wide
+
+<span class="cm"># Expected output (something like):</span>
+<span class="cm"># NAME                                       STATUS   ROLES    AGE   VERSION   INTERNAL-IP   ...</span>
+<span class="cm"># ip-192-168-xx-xx.ca-central-1.compute.internal Ready    &lt;none&gt;   2m    v1.36.x   192.168.x.x   ...</span></code></pre>
+
+<p>Note several things about the node:</p>
+<ul>
+  <li><strong>ROLES is <code>&lt;none&gt;</code></strong> — self-managed nodes don't get a role label by default (managed nodes get <code>node</code>)</li>
+  <li><strong>NAME is the private DNS name</strong> — because the node is in a private subnet</li>
+  <li><strong>VERSION matches your cluster version</strong> — eksctl selected the right AMI</li>
+</ul>
+</div>
+
+<div class="step">
+<p><span class="step-num">4</span> <strong>Inspect node labels</strong></p>
+
+<pre><code>kubectl get node -o json | jq '.items[0].metadata.labels'</code></pre>
+
+<p>Look for the eksctl-injected labels:</p>
+<pre><code>{
+  <span class="str">"alpha.eksctl.io/cluster-name"</span>: <span class="str">"jlebon"</span>,
+  <span class="str">"alpha.eksctl.io/nodegroup-name"</span>: <span class="str">"jlebon-selfmanaged"</span>,
+  <span class="str">"eks.amazonaws.com/nodegroup"</span>: <span class="str">"jlebon-selfmanaged"</span>,
+  <span class="str">"eks.amazonaws.com/capacityType"</span>: <span class="str">"ON_DEMAND"</span>,
+  <span class="cm">// ... plus standard kubernetes.io labels</span>
+}</code></pre>
+
+<p>These labels were injected via <code>--node-labels</code> in the kubelet flags — which eksctl set in the <code>NodeConfig</code>. You'll see exactly where in the next step.</p>
+</div>
+
+<h2>Inspect the Launch Template</h2>
+
+<p>This is the most important part: understanding <em>exactly</em> what eksctl built.</p>
+
+<div class="step">
+<p><span class="step-num">5</span> <strong>Find and inspect the launch template</strong></p>
+
+<pre><code><span class="cm"># Find the launch template — eksctl names it eksctl-&lt;cluster&gt;-nodegroup-&lt;ng-name&gt;</span>
+aws ec2 describe-launch-templates \
+  --filters "Name=launch-template-name,Values=eksctl-jlebon-nodegroup-*" \
+  --query 'LaunchTemplates[].{Name:LaunchTemplateName,ID:LaunchTemplateId}' \
+  --output table
+
+<span class="cm"># Alternative: get it from the CloudFormation stack (always works)</span>
+aws cloudformation describe-stack-resources \
+  --stack-name eksctl-jlebon-nodegroup-jlebon-selfmanaged \
+  --query 'StackResources[?ResourceType==`AWS::EC2::LaunchTemplate`].PhysicalResourceId' \
+  --output text</code></pre>
+
+<p>Now get the full launch template data:</p>
+
+<pre><code><span class="cm"># Replace LT_ID with the ID from above</span>
+LT_ID=<span class="str">"lt-0xxxxxxxxxxxxxxxxx"</span>
+
+aws ec2 describe-launch-template-versions \
+  --launch-template-id "$LT_ID" \
+  --versions '$Default' \
+  --query 'LaunchTemplateVersions[0].LaunchTemplateData' \
+  --output json | jq '.'</code></pre>
+
+<p>You'll see the full launch template — AMI ID, instance type, security groups, IAM instance profile, and the base64-encoded user data.</p>
+</div>
+
+<div class="step">
+<p><span class="step-num">6</span> <strong>Decode the user data — see the NodeConfig</strong></p>
+
+<p>This is the moment of truth. The user data contains the <code>NodeConfig</code> that <code>nodeadm</code> uses to bootstrap the node:</p>
+
+<pre><code><span class="cm"># Decode the user data from the launch template</span>
+aws ec2 describe-launch-template-versions \
+  --launch-template-id "$LT_ID" \
+  --versions '$Default' \
+  --query 'LaunchTemplateVersions[0].LaunchTemplateData.UserData' \
+  --output text | base64 -d</code></pre>
+
+<p>You should see something like:</p>
+
+<pre><code>MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=//
+
+--//
+Content-Type: application/node.eks.aws
+
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    apiServerEndpoint: https://ABCDEF1234.sk1.ca-central-1.eks.amazonaws.com
+    certificateAuthority: LS0tLS1CRUdJTi...long-base64...
+    cidr: 10.100.0.0/16
+    name: jlebon
+  kubelet:
+    config:
+      clusterDNS:
+      - 10.100.0.10
+    flags:
+    - "--node-labels=alpha.eksctl.io/cluster-name=jlebon,..."
+
+--//--</code></pre>
+
+<div class="callout callout-key">
+  <strong>🔑 This is the bootstrap contract in action</strong>
+  <p style="margin-bottom: 0;">Everything you learned in Lesson 3 is right here. The four cluster parameters (<code>apiServerEndpoint</code>, <code>certificateAuthority</code>, <code>cidr</code>, <code>name</code>) are injected by eksctl. The kubelet config sets <code>clusterDNS</code> (derived from the CIDR — .10 of the service range). The kubelet flags inject the node labels. This is <em>all</em> that <code>nodeadm</code> needs to join the node to the cluster.</p>
+</div>
+</div>
+
+<h2>Inspect the IAM Setup</h2>
+
+<div class="step">
+<p><span class="step-num">7</span> <strong>Find the node IAM role and its policies</strong></p>
+
+<pre><code><span class="cm"># List IAM roles created by eksctl for this cluster</span>
+aws iam list-roles \
+  --query "Roles[?contains(RoleName, 'jlebon-nodegroup')].[RoleName,Arn]" \
+  --output table
+
+<span class="cm"># Get the attached policies (replace ROLE_NAME)</span>
+ROLE_NAME=<span class="str">"eksctl-jlebon-nodegroup-ng-se-NodeInstanceRole-XXXX"</span>
+aws iam list-attached-role-policies --role-name "$ROLE_NAME" --output table</code></pre>
+
+<p>You should see the three required policies from Lesson 3:</p>
+
+<table>
+  <tr><th>Policy</th><th>Why it's needed</th></tr>
+  <tr>
+    <td><code>AmazonEKSWorkerNodePolicy</code></td>
+    <td>Allows kubelet to call EKS APIs (describe cluster, etc.)</td>
+  </tr>
+  <tr>
+    <td><code>AmazonEKS_CNI_Policy</code></td>
+    <td>Allows the VPC CNI plugin to manage ENIs for pod networking</td>
+  </tr>
+  <tr>
+    <td><code>AmazonEC2ContainerRegistryReadOnly</code></td>
+    <td>Allows pulling container images from ECR</td>
+  </tr>
+  <tr>
+    <td><code>AmazonSSMManagedInstanceCore</code></td>
+    <td>Allows SSM Session Manager access (eksctl adds this by default)</td>
+  </tr>
+</table>
+</div>
+
+<div class="step">
+<p><span class="step-num">8</span> <strong>Check how the node is authorized in Kubernetes</strong></p>
+
+<p>For self-managed nodes, eksctl must explicitly authorize the node IAM role. Check the access entries:</p>
+
+<pre><code><span class="cm"># List access entries for the cluster</span>
+aws eks list-access-entries --cluster-name jlebon --output json | jq '.'
+
+<span class="cm"># Describe the node role's access entry (replace with actual ARN)</span>
+NODE_ROLE_ARN=<span class="str">"arn:aws:iam::ACCOUNT:role/eksctl-jlebon-nodegroup-..."</span>
+aws eks describe-access-entry \
+  --cluster-name jlebon \
+  --principal-arn "$NODE_ROLE_ARN" \
+  --output json | jq '.'</code></pre>
+
+<p>The access entry's type should be <code>EC2_LINUX</code> — this tells EKS to authorize EC2 instances with this IAM role as Kubernetes nodes.</p>
+
+<div class="callout callout-info">
+  <strong>ℹ️ Access entries vs aws-auth ConfigMap</strong>
+  Older clusters used the <code>aws-auth</code> ConfigMap to map IAM roles to Kubernetes identities. Access entries are the newer mechanism — they're managed via the EKS API rather than a ConfigMap. eksctl uses access entries by default on new clusters. For your bootc AMI work, this means the IAM role attached to your custom nodes must have an access entry — eksctl handles this, but if you're launching EC2 instances manually, you'll need to create it yourself.
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html">AWS Docs: EKS access entries</a></p>
+</div>
+
+<h2>Inspect the Auto Scaling Group</h2>
+
+<div class="step">
+<p><span class="step-num">9</span> <strong>Find the ASG and its configuration</strong></p>
+
+<pre><code><span class="cm"># Find the ASG</span>
+aws autoscaling describe-auto-scaling-groups \
+  --query "AutoScalingGroups[?contains(AutoScalingGroupName, 'jlebon')].\
+{Name:AutoScalingGroupName,Desired:DesiredCapacity,Min:MinSize,Max:MaxSize,\
+LT:MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification.LaunchTemplateId}" \
+  --output table</code></pre>
+
+<p>Note that the ASG references the same launch template you inspected earlier. This is the chain: <strong>eksctl config → CloudFormation → launch template + ASG → EC2 instance → nodeadm reads user data → kubelet registers with EKS</strong>.</p>
+</div>
+
+<h2>Inspect the CloudFormation Stack</h2>
+
+<div class="step">
+<p><span class="step-num">10</span> <strong>See every resource eksctl created for the node group</strong></p>
+
+<pre><code>aws cloudformation describe-stack-resources \
+  --stack-name eksctl-jlebon-nodegroup-jlebon-selfmanaged \
+  --query 'StackResources[].{Type:ResourceType,LogicalID:LogicalResourceId,Status:ResourceStatus}' \
+  --output table</code></pre>
+
+<p>You'll see all the resources that make up a self-managed node group:</p>
+
+<table>
+  <tr><th>Resource Type</th><th>What it is</th></tr>
+  <tr><td><code>AWS::EC2::LaunchTemplate</code></td><td>The launch template (AMI + user data + instance config)</td></tr>
+  <tr><td><code>AWS::AutoScaling::AutoScalingGroup</code></td><td>The ASG that manages EC2 instance lifecycle</td></tr>
+  <tr><td><code>AWS::IAM::Role</code></td><td>The node IAM role</td></tr>
+  <tr><td><code>AWS::IAM::InstanceProfile</code></td><td>The instance profile wrapping the IAM role</td></tr>
+  <tr><td><code>AWS::EC2::SecurityGroup</code></td><td>Node security group (traffic between nodes)</td></tr>
+  <tr><td><code>AWS::EC2::SecurityGroupIngress/Egress</code></td><td>Rules allowing node ↔ control plane communication</td></tr>
+  <tr><td><code>AWS::EKS::AccessEntry</code></td><td>Authorizes the node IAM role in Kubernetes</td></tr>
+</table>
+
+<div class="callout callout-bootc">
+  <strong>🔧 For your bootc AMI</strong>
+  <p style="margin-bottom: 0;">When you deploy your bootc AMI, the only thing that changes in this stack is the <strong>AMI ID in the launch template</strong> and possibly the <strong>user data</strong>. Everything else — IAM, security groups, ASG, access entry — stays the same. This is why understanding the infrastructure layer separately from the bootstrap layer is critical.</p>
+</div>
+</div>
+
+<h2>Run a Workload</h2>
+
+<div class="step">
+<p><span class="step-num">11</span> <strong>Deploy a simple pod to verify the node is fully functional</strong></p>
+
+<pre><code><span class="cm"># Create a simple nginx deployment</span>
+kubectl create deployment nginx --image=nginx:latest --replicas=1
+
+<span class="cm"># Wait for it to be ready</span>
+kubectl rollout status deployment/nginx
+
+<span class="cm"># Verify it's running on your self-managed node</span>
+kubectl get pods -o wide
+
+<span class="cm"># Check that the pod can reach the internet (DNS works, networking works)</span>
+kubectl exec deploy/nginx -- curl -s -o /dev/null -w "%{http_code}" https://aws.amazon.com</code></pre>
+
+<p>If you get a <code>200</code> back, your self-managed node is fully functional — kubelet is running pods, the CNI plugin assigned a pod IP, kube-proxy set up iptables rules, and DNS resolution works.</p>
+</div>
+
+<h2>Inspect the Node from Inside</h2>
+
+<p>You've seen the node from the outside — launch template, IAM, CloudFormation. Now <strong>shell into the node</strong> and see what a working EKS node looks like from the inside. This is the most directly useful part for your bootc AMI work: it's a checklist of everything your image needs to replicate.</p>
+
+<div class="step">
+<p><span class="step-num">12</span> <strong>Connect to the node via SSM Session Manager</strong></p>
+
+<pre><code><span class="cm"># Get the instance ID of your node</span>
+INSTANCE_ID=$(aws ec2 describe-instances \
+  --filters "Name=tag:alpha.eksctl.io/cluster-name,Values=jlebon" \
+            "Name=instance-state-name,Values=running" \
+  --query 'Reservations[0].Instances[0].InstanceId' \
+  --output text)
+
+echo "$INSTANCE_ID"
+
+<span class="cm"># Start an SSM session (opens an interactive shell on the node)</span>
+aws ssm start-session --target "$INSTANCE_ID"</code></pre>
+
+<p>You'll get a shell as <code>ssm-user</code>. Switch to root to inspect system services:</p>
+
+<pre><code>sudo -i</code></pre>
+
+<div class="callout callout-info">
+  <strong>ℹ️ Why SSM instead of SSH?</strong>
+  SSM Session Manager works through the SSM agent (already installed on AL2023), routes through AWS APIs, and doesn't require a bastion host, SSH key, or port 22 in the security group. It works even for nodes in private subnets with no public IP — exactly our setup. The <code>AmazonSSMManagedInstanceCore</code> policy you saw earlier is what makes this possible.
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html">AWS Docs: SSM Session Manager</a></p>
+</div>
+
+<div class="step">
+<p><span class="step-num">13</span> <strong>Read the nodeadm boot logs</strong></p>
+
+<p><code>nodeadm</code> runs as two systemd services in sequence. These logs tell you exactly what happened during bootstrap:</p>
+
+<pre><code><span class="cm"># Phase 1: nodeadm-config (runs BEFORE user data)</span>
+<span class="cm"># Sets up baseline containerd + kubelet config</span>
+journalctl -u nodeadm-config --no-pager
+
+<span class="cm"># Phase 2: nodeadm-run (runs AFTER user data)</span>
+<span class="cm"># Starts containerd, kubelet, and registers the node</span>
+journalctl -u nodeadm-run --no-pager</code></pre>
+
+<p>In the <code>nodeadm-config</code> output, look for:</p>
+<ul>
+  <li><code>Loading configuration.. {"configSource": ["imds://user-data"]}</code> — it read the NodeConfig from EC2 user data via IMDS</li>
+  <li><code>Fetched kubelet version</code> — the kubelet binary version it found on the AMI</li>
+</ul>
+
+<p>In the <code>nodeadm-run</code> output, look for:</p>
+<ul>
+  <li>Containerd starting</li>
+  <li>Kubelet configuration being written</li>
+  <li>Sandbox image being pulled from ECR</li>
+  <li>Kubelet starting and registering</li>
+</ul>
+
+<pre><code><span class="cm"># Also check cloud-init logs to see the full boot sequence</span>
+journalctl -u cloud-init --no-pager | head -50
+
+<span class="cm"># And the cloud-init output log (captures stdout of user-data scripts)</span>
+cat /var/log/cloud-init-output.log 2>/dev/null | tail -30</code></pre>
+
+<div class="callout callout-bootc">
+  <strong>🔧 For your bootc AMI</strong>
+  <p style="margin-bottom: 0;">Your bootc image won't have <code>nodeadm</code> (or you may choose not to use it). But this log output is a blueprint: it shows the <em>sequence of operations</em> a bootstrap mechanism must perform. Your custom bootstrap script needs to do the same things in the same order: read config → configure runtime → configure kubelet → start services.</p>
+</div>
+</div>
+
+<div class="step">
+<p><span class="step-num">14</span> <strong>Inspect kubelet and containerd</strong></p>
+
+<h3>Kubelet</h3>
+
+<pre><code><span class="cm"># Kubelet service status</span>
+systemctl status kubelet
+
+<span class="cm"># Kubelet configuration (written by nodeadm)</span>
+cat /etc/kubernetes/kubelet/config.json | jq .
+
+<span class="cm"># Kubelet kubeconfig (how kubelet authenticates to the API server)</span>
+cat /var/lib/kubelet/kubeconfig
+
+<span class="cm"># Kubelet environment variables (flags passed at startup)</span>
+cat /etc/eks/kubelet/environment
+
+<span class="cm"># The CA certificate kubelet uses for TLS</span>
+ls -la /etc/kubernetes/pki/ca.crt</code></pre>
+
+<p>Key things to notice in the kubelet config:</p>
+<ul>
+  <li><code>clusterDNS</code> — set to the .10 address of the service CIDR (e.g. <code>10.100.0.10</code>)</li>
+  <li><code>containerRuntimeEndpoint</code> — points to containerd's Unix socket</li>
+  <li><code>authentication</code> — uses webhook (IAM-based via <code>aws-iam-authenticator</code>)</li>
+  <li><code>serverTLSBootstrap</code> — kubelet bootstraps its own serving certificate</li>
+</ul>
+
+<h3>Containerd</h3>
+
+<pre><code><span class="cm"># Containerd service status</span>
+systemctl status containerd
+
+<span class="cm"># Containerd config (written by nodeadm, then containerd merges defaults)</span>
+cat /etc/containerd/config.toml
+
+<span class="cm"># Check the sandbox (pause) image — pulled from ECR</span>
+crictl images | grep pause</code></pre>
+
+<div class="callout callout-bootc">
+  <strong>🔧 For your bootc AMI</strong>
+  <p style="margin-bottom: 0;">Your image uses CRI-O instead of containerd. The kubelet config's <code>containerRuntimeEndpoint</code> will need to point to CRI-O's socket (<code>unix:///var/run/crio/crio.sock</code>) instead of containerd's. The rest of the kubelet config — <code>clusterDNS</code>, authentication, TLS bootstrap — stays the same regardless of runtime. This is one of the concrete things you now know to change.</p>
+</div>
+</div>
+
+<div class="step">
+<p><span class="step-num">15</span> <strong>Inspect the bootstrap artifacts</strong></p>
+
+<h3>Binaries on the AMI</h3>
+
+<pre><code><span class="cm"># Every binary from the bootstrap contract (Lesson 3) — verify they're all here</span>
+ls -la /usr/bin/kubelet
+ls -la /usr/bin/containerd
+ls -la /usr/local/bin/aws-iam-authenticator
+ls -la /opt/cni/bin/
+ls -la /etc/eks/image-credential-provider/ecr-credential-provider
+ls -la /usr/sbin/iptables
+ls -la /usr/bin/nodeadm</code></pre>
+
+<h3>User data as the node received it</h3>
+
+<pre><code><span class="cm"># Read the raw user data from IMDS — this is what nodeadm parsed at boot</span>
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/user-data</code></pre>
+
+<p>This should match exactly what you decoded from the launch template in step 6. The node received the <code>NodeConfig</code> through EC2 Instance Metadata Service (IMDS), and <code>nodeadm</code> parsed it from there.</p>
+
+<h3>Nodeadm's cached config</h3>
+
+<pre><code><span class="cm"># nodeadm caches its resolved config here after boot</span>
+cat /run/eks/nodeadm/config.json 2>/dev/null | jq . || echo "(not cached on this version)"</code></pre>
+
+<h3>Systemd units</h3>
+
+<pre><code><span class="cm"># The two nodeadm systemd services that orchestrate the bootstrap</span>
+systemctl cat nodeadm-config
+echo "---"
+systemctl cat nodeadm-run
+
+<span class="cm"># See the ordering: nodeadm-config runs before cloud-init,</span>
+<span class="cm"># nodeadm-run runs after cloud-init</span>
+systemctl show -p After nodeadm-run.service | tr ' ' '\n' | head -10</code></pre>
+
+<h3>Kernel modules and sysctl</h3>
+
+<pre><code><span class="cm"># Kernel modules loaded for containerd networking</span>
+cat /etc/modules-load.d/containerd.conf
+
+<span class="cm"># Sysctl settings for pod networking (IP forwarding, etc.)</span>
+cat /etc/sysctl.d/99-nodeadm.conf</code></pre>
+
+<div class="callout callout-key">
+  <strong>🔑 What you're looking at is a complete inventory</strong>
+  <p style="margin-bottom: 0;">Every file and binary you've just inspected is something your bootc AMI either needs to include or replace with an equivalent. The binaries (kubelet, CNI, iam-authenticator) are universal. The configs (kubelet config, runtime config, sysctl) need to be generated by <em>your</em> bootstrap mechanism. The systemd units are the orchestration glue. This is the reference implementation for "what does a working EKS node look like?"</p>
+</div>
+
+<pre><code><span class="cm"># When you're done exploring, exit the SSM session</span>
+exit  <span class="cm"># exit root shell</span>
+exit  <span class="cm"># exit SSM session</span></code></pre>
+
+<p class="cite">Sources: <a href="https://awslabs.github.io/amazon-eks-ami/nodeadm/">nodeadm overview</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/hybrid-nodes-nodeadm.html">AWS Docs: nodeadm reference (artifact paths)</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/al2023.html">AWS Docs: AL2023 nodeadm</a></p>
+</div>
+
+<h2>The Full Chain — What You Just Deployed</h2>
+
+<div class="diagram">
+  eksctl config (YAML)
+       │
+       ▼
+  CloudFormation stacks
+       │
+       ├── Cluster stack
+       │     ├── VPC + subnets + NAT/IGW
+       │     ├── EKS control plane
+       │     └── Cluster security group
+       │
+       └── Node group stack
+             ├── IAM role + instance profile
+             ├── Node security group + ingress/egress rules
+             ├── Launch template
+             │     ├── AMI ID  ◄── <span style="color: #9c27b0;">THIS is what you change for bootc</span>
+             │     ├── Instance type
+             │     ├── Security groups
+             │     ├── Instance profile
+             │     └── User data (NodeConfig)  ◄── <span style="color: #9c27b0;">AND THIS</span>
+             ├── Auto Scaling Group → EC2 instances
+             └── Access entry (node IAM role → Kubernetes auth)
+
+  At boot:
+    EC2 instance starts → cloud-init → nodeadm reads NodeConfig
+    → configures + starts containerd → configures + starts kubelet
+    → kubelet authenticates via IAM → registers with EKS API server
+    → node becomes Ready</div>
+
+<h2>Console Walkthrough</h2>
+
+<div class="step">
+<p><span class="step-num">16</span> <strong>See the self-managed node in the EKS console</strong></p>
+
+<ol>
+  <li>Open the <a href="https://ca-central-1.console.aws.amazon.com/eks/home?region=ca-central-1#/clusters">EKS Console</a></li>
+  <li>Click <strong>jlebon</strong> → <strong>Compute</strong> tab</li>
+  <li>Notice: under <strong>Node groups</strong>, there's nothing — self-managed nodes don't appear as an EKS "node group" entity</li>
+  <li>Click <strong>Nodes</strong> — your node appears here because kubelet registered it, but EKS doesn't know it's part of a "group"</li>
+  <li>Click the node name → you can see its instance ID, labels, conditions, and running pods</li>
+</ol>
+
+<p>Now compare in the <a href="https://ca-central-1.console.aws.amazon.com/ec2/home?region=ca-central-1#Instances:">EC2 Console</a>:</p>
+<ol>
+  <li>Find your instance (filter by tag <code>alpha.eksctl.io/cluster-name = jlebon</code>)</li>
+  <li>Click <strong>Actions → Instance settings → View/change user data</strong> — you'll see the same NodeConfig MIME document you decoded earlier</li>
+  <li>Click the <strong>Security</strong> tab → note the IAM role and security groups</li>
+  <li>Click the <strong>Networking</strong> tab → note the private IP and the VPC subnet</li>
+</ol>
+</div>
+
+<h2>Mapping to Your Bootc AMI</h2>
+
+<p>Now that you've seen every piece, here's the concrete translation for your bootc work:</p>
+
+<table>
+  <tr><th style="width: 40%">What eksctl did with the official AMI</th><th>What you'll need for bootc</th></tr>
+  <tr>
+    <td>Used <code>amiFamily: AmazonLinux2023</code> to pick the right AMI</td>
+    <td>Use <code>ami: ami-YOUR-BOOTC-ID</code> to specify your AMI explicitly</td>
+  </tr>
+  <tr>
+    <td>Generated <code>NodeConfig</code> user data for <code>nodeadm</code></td>
+    <td>Either include <code>nodeadm</code> in your bootc image, or write a custom bootstrap that reads the same 4 parameters from IMDS user data</td>
+  </tr>
+  <tr>
+    <td><code>nodeadm</code> started containerd + kubelet</td>
+    <td>Your bootc image uses CRI-O — you'll need a bootstrap script that configures and starts CRI-O + kubelet (bypassing <code>nodeadm</code>'s containerd assumptions)</td>
+  </tr>
+  <tr>
+    <td>eksctl set <code>amiFamily</code> to control user data format</td>
+    <td>With a truly custom bootstrap, you may need <code>overrideBootstrapCommand</code> or a raw user data approach</td>
+  </tr>
+  <tr>
+    <td>Everything else (IAM, SG, ASG, access entry) — unchanged</td>
+    <td>Same — no changes needed</td>
+  </tr>
+</table>
+
+<div class="callout callout-bootc">
+  <strong>🔧 The key realization</strong>
+  <p style="margin-bottom: 0;">The infrastructure layer (IAM, networking, ASG, access entries) is <strong>AMI-agnostic</strong>. It doesn't care what OS is running. The only AMI-specific parts are the <strong>launch template AMI ID</strong> and the <strong>user data format</strong>. Your bootc AMI work is essentially: build the right AMI, write the right user data handler, and plug them into the same infrastructure.</p>
+</div>
+
+<h2>Clean Up</h2>
+
+<div class="step">
+<p><span class="step-num">17</span> <strong>Delete everything</strong></p>
+
+<pre><code><span class="cm"># Delete the workload first (optional — eksctl will clean up anyway)</span>
+kubectl delete deployment nginx
+
+<span class="cm"># Delete the cluster and all associated resources</span>
+eksctl delete cluster -f cluster-selfmanaged.yaml --wait
+
+<span class="cm"># Verify nothing is left (NAT gateways cost money!)</span>
+aws cloudformation list-stacks \
+  --query "StackSummaries[?contains(StackName,'jlebon') && StackStatus!='DELETE_COMPLETE']" \
+  --output table</code></pre>
+
+<div class="callout callout-warn">
+  <strong>⚠️ Cost reminder</strong>
+  The biggest cost driver here is the NAT gateway (~$0.045/hr) and the EC2 instance. The EKS control plane is $0.10/hr. If you leave this running for a day, it's roughly $4-5. Always clean up when done.
+</div>
+</div>
+
+<h2>Completion Checklist</h2>
+
+<ul class="checklist">
+  <li>Created a cluster with a self-managed node group (<code>nodeGroups</code> not <code>managedNodeGroups</code>)</li>
+  <li>Verified the node joined with <code>kubectl get nodes</code></li>
+  <li>Decoded the launch template user data and saw the <code>NodeConfig</code></li>
+  <li>Inspected the IAM role and its three required policies</li>
+  <li>Checked the access entry authorizing the node role</li>
+  <li>Listed the CloudFormation resources in the node group stack</li>
+  <li>Deployed and verified a workload on the self-managed node</li>
+  <li>Shelled into the node via SSM and inspected nodeadm logs</li>
+  <li>Inspected kubelet config, containerd config, and systemd units</li>
+  <li>Verified all bootstrap contract binaries are present on the AMI</li>
+  <li>Read user data from IMDS and confirmed it matches the launch template</li>
+  <li>Viewed the node in both the EKS console and EC2 console</li>
+  <li>Deleted the cluster</li>
+</ul>
+
+<div class="footer">
+  <p><strong>What you learned:</strong> The concrete mechanics of deploying a self-managed node group — from eksctl config through CloudFormation to a running, registered node. You can now trace every layer: config → launch template → user data → nodeadm → kubelet → node registration. You've seen a working EKS node from the inside — its logs, configs, binaries, and systemd units — giving you a concrete inventory of what your bootc AMI needs to replicate or replace.</p>
+  <p><strong>Reference:</strong> See the <a href="../reference/eks-glossary.html">EKS Glossary</a> and <a href="../reference/eks-node-bootstrap-contract.html">Node Bootstrap Contract</a> reference cards.</p>
+  <p style="margin-top: 1rem;"><strong>Questions?</strong> If anything was surprising or unclear during the hands-on, ask your teaching agent. Understanding this baseline is critical before you start swapping in custom AMIs.</p>
+</div>
+
+</body>
+</html>

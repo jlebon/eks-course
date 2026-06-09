@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 1 — EKS Architecture Mental Model</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 780px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e;
+         line-height: 1.7; background: #fafbfc; }
+  h1 { font-size: 1.8rem; color: #0f3460; margin-bottom: 0.3rem; }
+  .lesson-meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  h2 { font-size: 1.3rem; color: #0f3460; margin: 2.2rem 0 0.8rem;
+       padding-bottom: 0.3rem; border-bottom: 2px solid #e94560; }
+  h3 { font-size: 1.05rem; color: #16213e; margin: 1.5rem 0 0.5rem; }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin: 0 0 1rem 1.5rem; }
+  li { margin-bottom: 0.4rem; }
+  code { background: #e8ecf1; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 1rem 1.2rem; border-radius: 6px;
+        overflow-x: auto; margin: 1rem 0; font-size: 0.88rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: inherit; }
+
+  .callout { border-left: 4px solid; padding: 0.8rem 1rem; margin: 1.2rem 0;
+             border-radius: 0 6px 6px 0; }
+  .callout-info { background: #e8f4fd; border-color: #2196F3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout-key { background: #e8f5e9; border-color: #4caf50; }
+  .callout strong { display: block; margin-bottom: 0.3rem; }
+
+  .diagram { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+             padding: 1.5rem; margin: 1.5rem 0; font-family: 'Courier New', monospace;
+             font-size: 0.82rem; line-height: 1.4; white-space: pre; overflow-x: auto; }
+
+  .cite { font-size: 0.8rem; color: #666; }
+  .cite a { color: #2196F3; }
+
+  .quiz { background: #fff; border: 2px solid #0f3460; border-radius: 8px;
+          padding: 1.5rem; margin: 1.5rem 0; }
+  .quiz h3 { margin-top: 0; color: #0f3460; }
+  .quiz label { display: block; padding: 0.5rem 0.8rem; margin: 0.4rem 0;
+                border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+  .quiz label:hover { background: #f0f4ff; }
+  .quiz input[type="radio"] { margin-right: 0.5rem; }
+  .quiz .feedback { display: none; margin-top: 0.8rem; padding: 0.8rem;
+                    border-radius: 4px; font-size: 0.95rem; }
+  .quiz .feedback.correct { background: #e8f5e9; border: 1px solid #4caf50; }
+  .quiz .feedback.incorrect { background: #fce4ec; border: 1px solid #e57373; }
+  .quiz button { margin-top: 0.8rem; padding: 0.5rem 1.2rem; background: #0f3460;
+                 color: #fff; border: none; border-radius: 4px; cursor: pointer;
+                 font-size: 0.9rem; }
+  .quiz button:hover { background: #16213e; }
+
+  .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #ddd;
+            color: #888; font-size: 0.85rem; }
+  .footer a { color: #2196F3; }
+</style>
+</head>
+<body>
+
+<h1>Lesson 1: The EKS Architecture Mental Model</h1>
+<p class="lesson-meta">~10 min · No AWS account needed · Builds foundation for all future lessons</p>
+
+<p>You already know how Kubernetes works — a control plane managing worker nodes. EKS is that, but split across two distinct ownership boundaries. Understanding exactly where that boundary falls is the single most important thing for your goal of running custom bootc-based AMIs as EKS nodes.</p>
+
+<h2>The Split: Two VPCs, Two Owners</h2>
+
+<p>In a self-hosted Kubernetes cluster, you own everything. In EKS, the architecture is physically split:</p>
+
+<div class="diagram">
+┌─────────────────────────────────────────────────────────────────────┐
+│                    AWS-MANAGED VPC (you never see this)             │
+│                                                                     │
+│   ┌──────────┐   ┌──────────┐   ┌──────────┐                       │
+│   │API Server│   │API Server│   │  etcd x3 │   ← Multi-AZ,        │
+│   │  (AZ-a)  │   │  (AZ-b)  │   │(a, b, c) │     auto-scaled,     │
+│   └────┬─────┘   └─────┬────┘   └──────────┘     patched by AWS   │
+│        │               │                                            │
+│        └───────┬───────┘  + scheduler, controller-manager           │
+│                │                                                    │
+└────────────────┼────────────────────────────────────────────────────┘
+                 │
+                 │  Cross-account ENIs
+                 │  (placed in YOUR subnets)
+                 │
+┌────────────────┼────────────────────────────────────────────────────┐
+│                │              YOUR VPC                              │
+│   ┌────────────┴─────────────┐                                     │
+│   │  Private Subnets (≥2 AZs)│                                     │
+│   │                          │                                     │
+│   │  ┌──────────┐ ┌──────────┐ ┌──────────┐                       │
+│   │  │  Node 1  │ │  Node 2  │ │  Node 3  │  ← EC2 instances      │
+│   │  │ kubelet  │ │ kubelet  │ │ kubelet  │    you manage          │
+│   │  │ kube-prxy│ │ kube-prxy│ │ kube-prxy│                       │
+│   │  │ contrd   │ │ contrd   │ │ contrd   │                       │
+│   │  │┌──┐┌──┐ │ │┌──┐┌──┐ │ │┌──┐┌──┐ │                       │
+│   │  ││P1││P2│ │ ││P3││P4│ │ ││P5││P6│ │  ← pods w/ VPC IPs    │
+│   │  │└──┘└──┘ │ │└──┘└──┘ │ │└──┘└──┘ │                       │
+│   │  └──────────┘ └──────────┘ └──────────┘                       │
+│   └──────────────────────────────────────────┘                     │
+│                                                                     │
+│   ┌──────────────────────────┐                                     │
+│   │  Public Subnets          │                                     │
+│   │  ┌─────┐                 │  ← Load balancers, NAT gateway     │
+│   │  │ ALB │                 │                                     │
+│   │  └─────┘                 │                                     │
+│   └──────────────────────────┘                                     │
+└─────────────────────────────────────────────────────────────────────┘</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/eks-architecture.html">AWS Docs: Amazon EKS architecture</a></p>
+
+<div class="callout callout-key">
+  <strong>🔑 Key insight</strong>
+  The control plane runs in an AWS-managed VPC you <em>never see</em>. It connects to your VPC via cross-account Elastic Network Interfaces (ENIs) placed in your subnets. This is how kubelet on your nodes talks to the API server.
+</div>
+
+<h2>What AWS Manages vs. What You Manage</h2>
+
+<table style="width:100%; border-collapse:collapse; margin: 1rem 0;">
+  <thead>
+    <tr style="background:#0f3460; color:#fff; text-align:left;">
+      <th style="padding:0.6rem;">AWS manages</th>
+      <th style="padding:0.6rem;">You manage</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;">API server, etcd, scheduler, controllers</td>
+      <td style="padding:0.5rem;">Worker nodes (EC2 instances)</td>
+    </tr>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;">Control plane HA (multi-AZ)</td>
+      <td style="padding:0.5rem;">Node scaling, patching, OS updates*</td>
+    </tr>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;">Control plane upgrades</td>
+      <td style="padding:0.5rem;">Data plane (node) upgrades</td>
+    </tr>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;">etcd backups</td>
+      <td style="padding:0.5rem;">VPC, subnets, security groups</td>
+    </tr>
+    <tr>
+      <td style="padding:0.5rem;">API server endpoint & certs</td>
+      <td style="padding:0.5rem;">IAM roles (cluster role + node role)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p style="font-size:0.85rem; color:#666;">*With managed node groups, AWS handles rolling updates. With self-managed nodes, you handle everything.</p>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/eks-architecture.html">AWS Docs: Amazon EKS architecture</a></p>
+
+<h2>The Four Ways to Run Nodes</h2>
+
+<p>EKS offers four compute options. Understanding them matters because your bootc AMI work will likely target <strong>self-managed nodes</strong> — the option that gives you full control over the AMI.</p>
+
+<h3>1. EKS Auto Mode</h3>
+<p>AWS manages everything — node provisioning, scaling, patching, networking. You just deploy workloads. Least control, least ops burden. <strong>You cannot use a custom AMI.</strong></p>
+
+<h3>2. Managed Node Groups</h3>
+<p>AWS manages an Auto Scaling Group of EC2 instances for you. You pick instance type and AMI family. AWS handles rolling updates and node health.</p>
+<ul>
+  <li>Custom AMIs are supported, but only from specific AMI families: <code>AmazonLinux2023</code>, <code>AmazonLinux2</code>, <code>Bottlerocket</code>, <code>Ubuntu2204</code>, <code>Ubuntu2404</code></li>
+  <li>When you specify a custom AMI, AWS <strong>does not inject bootstrap user data</strong> — you must supply it yourself</li>
+</ul>
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-managed-node-group.html">AWS Docs: Create a managed node group</a>, <a href="https://docs.aws.amazon.com/eks/latest/eksctl/custom-ami-support.html">eksctl: Custom AMI support</a></p>
+
+<h3>3. Self-Managed Nodes</h3>
+<p>You create and manage the Auto Scaling Group, launch template, and EC2 instances yourself. Total control over the AMI, bootstrap process, and node lifecycle.</p>
+<ul>
+  <li><strong>This is where custom/bootc AMIs have the most freedom</strong></li>
+  <li>You must ensure your AMI runs the right bootstrap process to join the cluster</li>
+  <li>You must tag nodes with <code>kubernetes.io/cluster/&lt;name&gt; = owned</code></li>
+</ul>
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/worker.html">AWS Docs: Self-managed nodes</a></p>
+
+<h3>4. Fargate</h3>
+<p>Serverless — each pod runs in its own micro-VM. No nodes to manage. Not relevant for custom AMI work.</p>
+
+<div class="callout callout-warn">
+  <strong>⚠️ For your bootc AMI goal</strong>
+  You'll most likely use <strong>self-managed nodes</strong>. Managed node groups <em>might</em> work if your bootc image can masquerade as one of the supported AMI families, but self-managed gives you the most control over bootstrapping. We'll explore this in a later lesson.
+</div>
+
+<h2>How a Node Joins the Cluster</h2>
+
+<p>This is the process that your bootc AMI will eventually need to replicate. Here's what happens when an EC2 instance boots as an EKS node:</p>
+
+<ol>
+  <li><strong>EC2 instance launches</strong> from an AMI, in a subnet within your VPC</li>
+  <li><strong>User data runs</strong> — either <code>bootstrap.sh</code> (AL2) or <code>nodeadm</code> (AL2023) configures kubelet with:
+    <ul>
+      <li>Cluster name</li>
+      <li>API server endpoint</li>
+      <li>Certificate authority (CA) data</li>
+      <li>Service CIDR</li>
+    </ul>
+  </li>
+  <li><strong>kubelet starts</strong> and contacts the API server</li>
+  <li><strong>Node authorization</strong> — the node's IAM role must be mapped to a Kubernetes identity (via access entries or the <code>aws-auth</code> ConfigMap)</li>
+  <li><strong>Node registers</strong> as <code>Ready</code> — pods can now be scheduled on it</li>
+</ol>
+
+<div class="callout callout-info">
+  <strong>ℹ️ AL2 → AL2023 bootstrap shift</strong>
+  The older <code>/etc/eks/bootstrap.sh</code> (shell script) is being replaced by <code>nodeadm</code> (a Go binary with YAML config). AL2023-based AMIs use <code>nodeadm</code> and require you to explicitly supply cluster metadata — it no longer auto-discovers it via API call (to avoid throttling at scale).
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/al2023.html">AWS Docs: AL2023 nodeadm</a>, <a href="https://github.com/awslabs/amazon-eks-ami">GitHub: amazon-eks-ami</a></p>
+
+<h2>The Two IAM Roles</h2>
+
+<p>EKS requires two IAM roles. This trips up many newcomers:</p>
+
+<table style="width:100%; border-collapse:collapse; margin: 1rem 0;">
+  <thead>
+    <tr style="background:#0f3460; color:#fff; text-align:left;">
+      <th style="padding:0.6rem;">Role</th>
+      <th style="padding:0.6rem;">Who uses it</th>
+      <th style="padding:0.6rem;">Key permissions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;"><strong>Cluster IAM Role</strong></td>
+      <td style="padding:0.5rem;">The EKS control plane</td>
+      <td style="padding:0.5rem;"><code>AmazonEKSClusterPolicy</code> — lets the control plane manage AWS resources (ENIs, security groups, etc.)</td>
+    </tr>
+    <tr>
+      <td style="padding:0.5rem;"><strong>Node IAM Role</strong></td>
+      <td style="padding:0.5rem;">EC2 worker nodes</td>
+      <td style="padding:0.5rem;"><code>AmazonEKSWorkerNodePolicy</code>, <code>AmazonEKS_CNI_Policy</code>, <code>AmazonEC2ContainerRegistryReadOnly</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The <strong>node role</strong> is what allows your bootc instances to: (1) communicate with the EKS API, (2) configure pod networking via VPC CNI, and (3) pull container images from ECR.</p>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html">AWS Docs: Create an EKS cluster</a></p>
+
+<h2>The Three CLI Tools</h2>
+
+<p>You'll interact with EKS through three tools (plus the web console):</p>
+
+<table style="width:100%; border-collapse:collapse; margin: 1rem 0;">
+  <thead>
+    <tr style="background:#0f3460; color:#fff; text-align:left;">
+      <th style="padding:0.6rem;">Tool</th>
+      <th style="padding:0.6rem;">What it does</th>
+      <th style="padding:0.6rem;">When to use it</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;"><code>eksctl</code></td>
+      <td style="padding:0.5rem;">High-level EKS CLI. Creates clusters via CloudFormation stacks.</td>
+      <td style="padding:0.5rem;">Quick cluster creation, node group management. Generates CloudFormation behind the scenes.</td>
+    </tr>
+    <tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:0.5rem;"><code>aws eks</code></td>
+      <td style="padding:0.5rem;">AWS CLI subcommand for EKS API.</td>
+      <td style="padding:0.5rem;">Direct API calls. Cluster creation, kubeconfig updates. More verbose but more control.</td>
+    </tr>
+    <tr>
+      <td style="padding:0.5rem;"><code>kubectl</code></td>
+      <td style="padding:0.5rem;">Standard K8s CLI.</td>
+      <td style="padding:0.5rem;">Everything you already know — just pointed at an EKS cluster.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-key">
+  <strong>🔑 eksctl vs aws eks</strong>
+  <code>eksctl</code> is a convenience wrapper. Running <code>eksctl create cluster</code> generates CloudFormation templates that create VPC, subnets, IAM roles, security groups, and the cluster itself. <code>aws eks create-cluster</code> creates <em>only</em> the cluster — you must create the VPC, IAM roles, and everything else yourself first. Both are valid; <code>eksctl</code> is faster for learning, <code>aws eks</code> teaches you what's actually happening.
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html">AWS Docs: Getting started with EKS</a>, <a href="https://eksctl.io/">eksctl.io</a></p>
+
+<h2>Check Your Understanding</h2>
+
+<div class="quiz" id="q1">
+  <h3>Question 1: Where does the EKS control plane run?</h3>
+  <label><input type="radio" name="q1" value="a"> In your VPC, in EC2 instances you can SSH into</label>
+  <label><input type="radio" name="q1" value="b"> In an AWS-managed VPC you never see, connected to your VPC via ENIs</label>
+  <label><input type="radio" name="q1" value="c"> In your VPC, but AWS manages the instances</label>
+  <label><input type="radio" name="q1" value="d"> On AWS Lambda functions</label>
+  <button onclick="checkAnswer('q1', 'b')">Check</button>
+  <div class="feedback correct" id="q1-correct">✅ Correct! The control plane runs in an <strong>AWS-managed VPC</strong> that's completely invisible to you. It connects to your VPC through cross-account ENIs placed in your subnets.</div>
+  <div class="feedback incorrect" id="q1-incorrect">❌ Not quite. The control plane runs in an <strong>AWS-managed VPC</strong> you never see. It connects to your VPC through cross-account ENIs. You cannot access the control plane instances directly.</div>
+</div>
+
+<div class="quiz" id="q2">
+  <h3>Question 2: Which node type gives you full control over the AMI and bootstrap process?</h3>
+  <label><input type="radio" name="q2" value="a"> EKS Auto Mode</label>
+  <label><input type="radio" name="q2" value="b"> Managed Node Groups</label>
+  <label><input type="radio" name="q2" value="c"> Self-Managed Nodes</label>
+  <label><input type="radio" name="q2" value="d"> Fargate</label>
+  <button onclick="checkAnswer('q2', 'c')">Check</button>
+  <div class="feedback correct" id="q2-correct">✅ Correct! <strong>Self-managed nodes</strong> give you total control over the AMI, launch template, and bootstrap process. This is what you'll use for your bootc AMI.</div>
+  <div class="feedback incorrect" id="q2-incorrect">❌ Not quite. <strong>Self-managed nodes</strong> give you total control. Managed node groups support custom AMIs but only from specific AMI families. EKS Auto Mode and Fargate don't let you bring your own AMI at all.</div>
+</div>
+
+<div class="quiz" id="q3">
+  <h3>Question 3: What does <code>nodeadm</code> replace, and what info must you provide it?</h3>
+  <label><input type="radio" name="q3" value="a"> It replaces <code>kubeadm</code> and needs the join token</label>
+  <label><input type="radio" name="q3" value="b"> It replaces <code>bootstrap.sh</code> and needs cluster name, API endpoint, CA data, and service CIDR</label>
+  <label><input type="radio" name="q3" value="c"> It replaces <code>kubectl</code> and needs the kubeconfig</label>
+  <label><input type="radio" name="q3" value="d"> It replaces <code>eksctl</code> and needs the CloudFormation stack name</label>
+  <button onclick="checkAnswer('q3', 'b')">Check</button>
+  <div class="feedback correct" id="q3-correct">✅ Correct! <code>nodeadm</code> replaces the legacy <code>bootstrap.sh</code> script. It uses a YAML <code>NodeConfig</code> that must include: cluster name, API server endpoint, certificate authority, and service CIDR. Unlike the old script, it does <em>not</em> auto-discover this via API call.</div>
+  <div class="feedback incorrect" id="q3-incorrect">❌ Not quite. <code>nodeadm</code> replaces <code>bootstrap.sh</code> (the legacy AL2 bootstrap script). It requires a YAML <code>NodeConfig</code> with: cluster name, API server endpoint, certificate authority data, and service CIDR.</div>
+</div>
+
+<div class="quiz" id="q4">
+  <h3>Question 4: What's the key difference between <code>eksctl create cluster</code> and <code>aws eks create-cluster</code>?</h3>
+  <label><input type="radio" name="q4" value="a"> They're identical — just different syntax</label>
+  <label><input type="radio" name="q4" value="b"> <code>eksctl</code> creates VPC, IAM roles, and everything via CloudFormation; <code>aws eks</code> creates only the cluster</label>
+  <label><input type="radio" name="q4" value="c"> <code>aws eks</code> is faster because it doesn't use CloudFormation</label>
+  <label><input type="radio" name="q4" value="d"> <code>eksctl</code> only works with EKS Auto Mode</label>
+  <button onclick="checkAnswer('q4', 'b')">Check</button>
+  <div class="feedback correct" id="q4-correct">✅ Correct! <code>eksctl</code> is a convenience tool that generates CloudFormation stacks to create the VPC, subnets, IAM roles, security groups, AND the cluster. <code>aws eks create-cluster</code> creates only the EKS cluster itself — you must create all the supporting infrastructure separately.</div>
+  <div class="feedback incorrect" id="q4-incorrect">❌ Not quite. <code>eksctl</code> is higher-level — it generates CloudFormation stacks to create VPC, IAM roles, subnets, security groups, and the cluster all at once. <code>aws eks create-cluster</code> creates only the cluster, so you must set up all supporting infrastructure first.</div>
+</div>
+
+<script>
+function checkAnswer(qId, correct) {
+  const selected = document.querySelector(`input[name="${qId}"]:checked`);
+  if (!selected) return;
+  const correctEl = document.getElementById(`${qId}-correct`);
+  const incorrectEl = document.getElementById(`${qId}-incorrect`);
+  // Hide both first
+  correctEl.style.display = 'none';
+  incorrectEl.style.display = 'none';
+  if (selected.value === correct) {
+    correctEl.style.display = 'block';
+  } else {
+    incorrectEl.style.display = 'block';
+  }
+  // Disable further changes
+  document.querySelectorAll(`input[name="${qId}"]`).forEach(r => r.disabled = true);
+  document.querySelector(`#${qId} button`).disabled = true;
+}
+</script>
+
+<div class="footer">
+  <p><strong>What you learned:</strong> The EKS control plane / data plane split, the four node types (and why self-managed matters for custom AMIs), how nodes bootstrap into a cluster, the two IAM roles, and the three CLI tools.</p>
+  <p><strong>Next lesson:</strong> We'll get hands-on — setting up your CLI tools and creating your first EKS cluster.</p>
+  <p><strong>Reference:</strong> See the <a href="../reference/eks-glossary.html">EKS Glossary</a> for quick term lookups.</p>
+  <p style="margin-top: 1rem;"><strong>Questions?</strong> Ask your teaching agent — that's what it's here for. If something was unclear or you want to go deeper on any topic, just ask.</p>
+</div>
+
+</body>
+</html>

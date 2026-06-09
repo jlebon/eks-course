@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 2 — Your First EKS Cluster (CLI &amp; Console)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 780px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e;
+         line-height: 1.7; background: #fafbfc; }
+  h1 { font-size: 1.8rem; color: #0f3460; margin-bottom: 0.3rem; }
+  .lesson-meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  h2 { font-size: 1.3rem; color: #0f3460; margin: 2.2rem 0 0.8rem;
+       padding-bottom: 0.3rem; border-bottom: 2px solid #e94560; }
+  h3 { font-size: 1.05rem; color: #16213e; margin: 1.5rem 0 0.5rem; }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin: 0 0 1rem 1.5rem; }
+  li { margin-bottom: 0.4rem; }
+  code { background: #e8ecf1; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 1rem 1.2rem; border-radius: 6px;
+        overflow-x: auto; margin: 1rem 0; font-size: 0.85rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .comment { color: #6a9955; }
+  .placeholder { color: #ce9178; }
+
+  .callout { border-left: 4px solid; padding: 0.8rem 1rem; margin: 1.2rem 0;
+             border-radius: 0 6px 6px 0; }
+  .callout-info { background: #e8f4fd; border-color: #2196F3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout-key { background: #e8f5e9; border-color: #4caf50; }
+  .callout-cost { background: #fce4ec; border-color: #e91e63; }
+  .callout strong { display: block; margin-bottom: 0.3rem; }
+
+  .step { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+          padding: 1.2rem 1.5rem; margin: 1.2rem 0; }
+  .step-num { display: inline-block; background: #0f3460; color: #fff;
+              width: 1.8rem; height: 1.8rem; border-radius: 50%; text-align: center;
+              line-height: 1.8rem; font-weight: 700; font-size: 0.9rem; margin-right: 0.5rem; }
+  .step h3 { display: inline; margin: 0; }
+
+  .tabs { display: flex; gap: 0; margin: 1.2rem 0 0; }
+  .tab { padding: 0.5rem 1.2rem; cursor: pointer; border: 1px solid #ddd;
+         border-bottom: none; border-radius: 6px 6px 0 0; background: #f0f0f5;
+         font-size: 0.9rem; font-weight: 600; color: #666; }
+  .tab.active { background: #fff; color: #0f3460; border-bottom: 1px solid #fff;
+                margin-bottom: -1px; z-index: 1; }
+  .tab-content { border: 1px solid #ddd; border-radius: 0 6px 6px 6px; padding: 1.2rem;
+                 background: #fff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .cite { font-size: 0.8rem; color: #666; }
+  .cite a { color: #2196F3; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th { background: #0f3460; color: #fff; text-align: left; padding: 0.6rem; }
+  td { padding: 0.5rem; border-bottom: 1px solid #ddd; }
+
+  .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #ddd;
+            color: #888; font-size: 0.85rem; }
+  .footer a { color: #2196F3; }
+</style>
+</head>
+<body>
+
+<h1>Lesson 2: Your First EKS Cluster</h1>
+<p class="lesson-meta">~30 min hands-on · Requires AWS account · Creates real resources (cost ~$0.10/hr for control plane + node costs)</p>
+
+<p>In this lesson you'll create a real EKS cluster, see it in the console, connect <code>kubectl</code>, verify it's working, and tear it down. You'll do this via <code>eksctl</code> first (fast path), then walk through the console to understand what was created for you.</p>
+
+<div class="callout callout-cost">
+  <strong>💰 Cost warning</strong>
+  An EKS cluster costs <strong>$0.10/hour</strong> for the control plane alone, plus EC2 costs for nodes (e.g. ~$0.04/hr for a <code>t3.medium</code>). <strong>Delete everything at the end of this lesson.</strong> Total cost for ~1 hour: approximately $0.20–$0.30.
+</div>
+
+<h2>Part 1: Tool Setup</h2>
+
+<p>You need three CLI tools. Let's verify (or install) each one.</p>
+
+<div class="step">
+  <span class="step-num">1</span><h3>AWS CLI</h3>
+  <p>You should already have this configured with your work credentials.</p>
+  <pre><code><span class="comment"># Check version (need 2.x)</span>
+aws --version
+
+<span class="comment"># Verify you're authenticated and see your identity</span>
+aws sts get-caller-identity</code></pre>
+  <p>You should see your account ID, user ARN, etc. If not, run <code>aws configure</code> or set up your credentials file.</p>
+  <p class="cite">Source: <a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html">AWS Docs: Install AWS CLI</a></p>
+</div>
+
+<div class="step">
+  <span class="step-num">2</span><h3>kubectl</h3>
+  <p>You likely have this already. Verify it's a recent version:</p>
+  <pre><code>kubectl version --client</code></pre>
+  <p>Any recent version works — kubectl supports ±1 minor version skew with the cluster.</p>
+</div>
+
+<div class="step">
+  <span class="step-num">3</span><h3>eksctl</h3>
+  <p>This may be new to you. Install it:</p>
+  <pre><code><span class="comment"># Linux (amd64)</span>
+ARCH=amd64
+PLATFORM=$(uname -s)_$ARCH
+curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
+sudo install -m 0755 /tmp/eksctl /usr/local/bin && rm /tmp/eksctl
+
+<span class="comment"># Verify</span>
+eksctl version</code></pre>
+  <p>As of June 2026, the latest is v0.226.0. You need at least v0.215.0.</p>
+  <p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/eksctl/installation.html">AWS Docs: Install eksctl</a></p>
+</div>
+
+<h2>Part 2: Create the Cluster (eksctl)</h2>
+
+<p>We'll use <code>eksctl</code> with a YAML config file. This is preferable to inline flags because the config is reproducible and self-documenting.</p>
+
+<div class="step">
+  <span class="step-num">4</span><h3>Write the cluster config</h3>
+  <p>Create a file called <code>cluster.yaml</code>:</p>
+  <pre><code>apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: learn-eks          <span class="comment"># pick any name</span>
+  region: us-east-2        <span class="comment"># pick your preferred region</span>
+  version: "1.36"          <span class="comment"># latest EKS version as of June 2026</span>
+
+managedNodeGroups:
+  - name: default
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 3</code></pre>
+
+  <p>That's it. <code>eksctl</code> will create everything else for you: VPC, subnets, internet gateway, NAT gateway, route tables, cluster IAM role, node IAM role, security groups, the EKS cluster, and the managed node group.</p>
+
+  <div class="callout callout-info">
+    <strong>ℹ️ Why <code>managedNodeGroups</code> and not <code>nodeGroups</code>?</strong>
+    In eksctl config, <code>managedNodeGroups</code> creates AWS-managed node groups (AWS handles the ASG and rolling updates). <code>nodeGroups</code> creates self-managed node groups. For learning, managed is simpler. We'll switch to self-managed when we get to custom AMIs.
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">5</span><h3>Dry-run first</h3>
+  <p>See what eksctl <em>would</em> create without creating it:</p>
+  <pre><code>eksctl create cluster -f cluster.yaml --dry-run</code></pre>
+  <p>This outputs the full expanded config — all the defaults eksctl fills in. Skim it to see VPC CIDR, subnet layout, IAM policies, etc.</p>
+</div>
+
+<div class="step">
+  <span class="step-num">6</span><h3>Create the cluster</h3>
+  <pre><code>eksctl create cluster -f cluster.yaml</code></pre>
+  <p>This takes <strong>15–20 minutes</strong>. While you wait, read Part 3 below — we'll explore what's happening in the console.</p>
+  <p>You'll see output like:</p>
+  <pre><code>2026-06-09 10:00:00 [ℹ]  eksctl version 0.226.0
+2026-06-09 10:00:00 [ℹ]  using region us-east-2
+2026-06-09 10:00:02 [ℹ]  setting availability zones to [us-east-2a us-east-2b us-east-2c]
+2026-06-09 10:00:02 [ℹ]  subnets for us-east-2a - public:192.168.0.0/19 private:192.168.96.0/19
+...
+2026-06-09 10:15:00 [✔]  EKS cluster "learn-eks" in "us-east-2" region is ready</code></pre>
+
+  <p>When done, <code>eksctl</code> automatically updates your <code>~/.kube/config</code> so <code>kubectl</code> points at the new cluster.</p>
+</div>
+
+<h2>Part 3: Explore in the Console (while eksctl runs)</h2>
+
+<p>Open <a href="https://console.aws.amazon.com/eks/home">the EKS console</a> while the cluster is being created. This teaches you what eksctl is doing behind the scenes.</p>
+
+<div class="step">
+  <span class="step-num">7</span><h3>Watch CloudFormation</h3>
+  <p>Go to <strong>CloudFormation</strong> in the AWS console. You'll see two stacks being created:</p>
+  <table>
+    <tr><th>Stack Name</th><th>Creates</th></tr>
+    <tr><td><code>eksctl-learn-eks-cluster</code></td><td>VPC, subnets, internet gateway, NAT gateways, route tables, cluster IAM role, the EKS cluster itself, security groups</td></tr>
+    <tr><td><code>eksctl-learn-eks-nodegroup-default</code></td><td>Node IAM role, launch template, managed node group (Auto Scaling Group)</td></tr>
+  </table>
+  <p>Click into each stack → <strong>Resources</strong> tab to see every individual AWS resource. This is what you'd have to create manually without eksctl.</p>
+  <p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/getting-started-eksctl.html">AWS Docs: Getting started with eksctl</a></p>
+</div>
+
+<div class="step">
+  <span class="step-num">8</span><h3>Explore the EKS console</h3>
+  <p>Once the cluster status shows <strong>Active</strong> (this happens before nodes are ready):</p>
+  <ol>
+    <li>Go to <strong>EKS → Clusters → learn-eks</strong></li>
+    <li><strong>Overview tab</strong> — cluster endpoint URL, K8s version, platform version, cluster IAM role</li>
+    <li><strong>Compute tab</strong> — your managed node group (<code>default</code>), click into it to see instances</li>
+    <li><strong>Networking tab</strong> — VPC, subnets, security groups, cluster endpoint access (public/private)</li>
+    <li><strong>Add-ons tab</strong> — CoreDNS, kube-proxy, VPC CNI are auto-installed</li>
+    <li><strong>Resources tab</strong> — live view of Kubernetes objects (pods, services, etc.) right from the console</li>
+  </ol>
+  <p>Spend a few minutes clicking around. The console is how you'll verify things when debugging node issues later.</p>
+</div>
+
+<h2>Part 4: Connect and Verify</h2>
+
+<div class="step">
+  <span class="step-num">9</span><h3>Verify kubectl connectivity</h3>
+  <p>Once <code>eksctl create cluster</code> finishes:</p>
+  <pre><code><span class="comment"># See your nodes</span>
+kubectl get nodes -o wide
+
+<span class="comment"># Expected output: 2 nodes in Ready state</span>
+NAME                                       STATUS   ROLES    AGE   VERSION
+ip-192-168-xx-xx.us-east-2.compute.internal  Ready    &lt;none&gt;  2m    v1.36.x
+ip-192-168-yy-yy.us-east-2.compute.internal  Ready    &lt;none&gt;  2m    v1.36.x</code></pre>
+
+  <pre><code><span class="comment"># See system pods</span>
+kubectl get pods -A
+
+<span class="comment"># You should see pods in kube-system namespace:</span>
+<span class="comment"># - aws-node (VPC CNI) on each node</span>
+<span class="comment"># - coredns (2 replicas)</span>
+<span class="comment"># - kube-proxy on each node</span></code></pre>
+</div>
+
+<div class="step">
+  <span class="step-num">10</span><h3>Quick smoke test</h3>
+  <p>Deploy nginx to prove the cluster works:</p>
+  <pre><code><span class="comment"># Create a deployment</span>
+kubectl create deployment hello --image=nginx --replicas=1
+
+<span class="comment"># Check it's running</span>
+kubectl get pods -l app=hello
+
+<span class="comment"># Port-forward to access it locally</span>
+kubectl port-forward deployment/hello 8080:80
+
+<span class="comment"># In another terminal (or Ctrl-C after testing):</span>
+curl http://localhost:8080
+<span class="comment"># Should return the nginx welcome page HTML</span>
+
+<span class="comment"># Clean up the test deployment</span>
+kubectl delete deployment hello</code></pre>
+</div>
+
+<h2>Part 5: What eksctl Created (the Manual Way)</h2>
+
+<p>If you'd done this via the console or <code>aws eks</code> CLI instead of eksctl, here's what you'd have to create yourself, in order:</p>
+
+<table>
+  <tr><th>#</th><th>Step</th><th>Console location</th></tr>
+  <tr><td>1</td><td>Create a VPC with public + private subnets in ≥2 AZs</td><td>VPC → Create VPC</td></tr>
+  <tr><td>2</td><td>Create an internet gateway, NAT gateway, route tables</td><td>VPC → Internet/NAT Gateways</td></tr>
+  <tr><td>3</td><td>Create the <strong>cluster IAM role</strong> with <code>AmazonEKSClusterPolicy</code></td><td>IAM → Roles → Create role → EKS service</td></tr>
+  <tr><td>4</td><td>Create the EKS cluster, selecting VPC, subnets, role</td><td>EKS → Create cluster</td></tr>
+  <tr><td>5</td><td>Wait ~10 min for cluster to become Active</td><td>—</td></tr>
+  <tr><td>6</td><td>Update kubeconfig: <code>aws eks update-kubeconfig --name learn-eks --region us-east-2</code></td><td>CloudShell or local terminal</td></tr>
+  <tr><td>7</td><td>Create the <strong>node IAM role</strong> with Worker, CNI, and ECR policies</td><td>IAM → Roles → Create role → EC2 service</td></tr>
+  <tr><td>8</td><td>Create a node group, selecting instance type, scaling, subnets, role</td><td>EKS → Cluster → Compute → Add node group</td></tr>
+  <tr><td>9</td><td>Wait ~5 min for nodes to join</td><td>—</td></tr>
+</table>
+
+<p>That's 9 manual steps across 3 different AWS services. <code>eksctl</code> does all of it in one command.</p>
+
+<div class="callout callout-key">
+  <strong>🔑 Key insight</strong>
+  <code>eksctl</code> translates your YAML config into CloudFormation templates. If you ever need to understand or debug what was created, look at the CloudFormation stacks — they're the source of truth, not eksctl itself.
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/getting-started-console.html">AWS Docs: Getting started — Console and CLI</a></p>
+
+<h2>Part 6: The Console Create Flow (Guided Tour)</h2>
+
+<p>You don't need to do this now — but here's the console cluster creation flow so you know it when you need it. The EKS console is at <a href="https://console.aws.amazon.com/eks/home">console.aws.amazon.com/eks</a>.</p>
+
+<h3>Console steps (click-by-click)</h3>
+<ol>
+  <li><strong>Clusters → Add cluster → Create</strong></li>
+  <li><strong>Configuration options</strong> → select <em>Custom configuration</em>, toggle off <em>Use EKS Auto Mode</em></li>
+  <li><strong>Configure cluster</strong>:
+    <ul>
+      <li><em>Name</em> — your cluster name</li>
+      <li><em>Kubernetes version</em> — pick 1.36 (latest)</li>
+      <li><em>Cluster service role</em> — select or create the cluster IAM role</li>
+      <li><em>Cluster access</em> — Bootstrap admin access: Allow. Auth mode: EKS API (recommended)</li>
+    </ul>
+  </li>
+  <li><strong>Specify networking</strong>:
+    <ul>
+      <li><em>VPC</em> — pick your VPC (must have subnets in ≥2 AZs)</li>
+      <li><em>Subnets</em> — select private subnets for nodes</li>
+      <li><em>Cluster endpoint access</em> — "Public and private" for learning</li>
+    </ul>
+  </li>
+  <li><strong>Configure observability</strong> → defaults are fine</li>
+  <li><strong>Select add-ons</strong> → defaults install CoreDNS, kube-proxy, VPC CNI</li>
+  <li><strong>Configure add-ons settings</strong> → defaults are fine</li>
+  <li><strong>Review and create</strong> → Create</li>
+</ol>
+
+<p>Then, once the cluster is Active, go to <strong>Compute → Add node group</strong> and walk through the node group wizard (node role, instance type, scaling, subnets).</p>
+
+<div class="callout callout-info">
+  <strong>ℹ️ When to use the console vs eksctl</strong>
+  Use <strong>eksctl</strong> when you want reproducibility and speed. Use the <strong>console</strong> when you want to inspect what exists, debug issues, or when your org requires console-based workflows. Both create the same underlying resources.
+</div>
+
+<h2>Part 7: Clean Up</h2>
+
+<div class="callout callout-cost">
+  <strong>💰 Do this now!</strong>
+  Don't leave the cluster running. Delete it to avoid charges.
+</div>
+
+<div class="step">
+  <span class="step-num">11</span><h3>Delete everything</h3>
+  <pre><code>eksctl delete cluster -f cluster.yaml
+
+<span class="comment"># Or equivalently:</span>
+<span class="comment"># eksctl delete cluster --name learn-eks --region us-east-2</span></code></pre>
+  <p>This deletes the CloudFormation stacks, which tears down nodes, node group, cluster, IAM roles, VPC, subnets, gateways — everything.</p>
+  <p>Takes ~5–10 minutes. Verify in CloudFormation that both stacks show <code>DELETE_COMPLETE</code>.</p>
+</div>
+
+<div class="step">
+  <span class="step-num">12</span><h3>Verify cleanup in console</h3>
+  <p>Check these console pages to confirm nothing is left behind:</p>
+  <ul>
+    <li><strong>EKS → Clusters</strong> — should be empty</li>
+    <li><strong>CloudFormation → Stacks</strong> — both stacks should be gone (or show DELETE_COMPLETE)</li>
+    <li><strong>EC2 → Instances</strong> — no leftover instances from the node group</li>
+    <li><strong>VPC → Your VPCs</strong> — the eksctl-created VPC should be deleted</li>
+  </ul>
+</div>
+
+<h2>What You Built</h2>
+
+<p>In this lesson you:</p>
+<ul>
+  <li>Set up <code>eksctl</code>, verified <code>aws</code> CLI and <code>kubectl</code></li>
+  <li>Created a full EKS cluster + managed node group with a single command</li>
+  <li>Explored the CloudFormation stacks to see the ~20 AWS resources eksctl created for you</li>
+  <li>Used the EKS console to inspect cluster, nodes, networking, and add-ons</li>
+  <li>Connected <code>kubectl</code> and ran a smoke test</li>
+  <li>Understood the 9-step manual process that eksctl automates</li>
+  <li>Cleaned everything up</li>
+</ul>
+
+<div class="footer">
+  <p><strong>Next lesson:</strong> We'll dive into <strong>node groups in detail</strong> — managed vs self-managed, custom AMIs, launch templates, and the nodeadm bootstrap process. This is where your bootc AMI work connects to EKS.</p>
+  <p><strong>Reference:</strong> See the <a href="../reference/eks-glossary.html">EKS Glossary</a> for term lookups.</p>
+  <p style="margin-top: 1rem;"><strong>Questions?</strong> If something didn't work, or you want to understand any step more deeply, ask your teaching agent.</p>
+</div>
+
+</body>
+</html>

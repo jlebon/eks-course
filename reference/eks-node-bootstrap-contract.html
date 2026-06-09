@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EKS Node Bootstrap Contract — Quick Reference</title>
+<style>
+  @media print { body { font-size: 10pt; } h1 { font-size: 14pt; } h2 { font-size: 12pt; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 800px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e;
+         line-height: 1.5; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.3rem; color: #0f3460; }
+  .subtitle { color: #666; margin-bottom: 1.5rem; font-size: 0.85rem; }
+  h2 { font-size: 1.1rem; color: #e94560; margin: 1.5rem 0 0.6rem; padding-bottom: 0.2rem;
+       border-bottom: 2px solid #e94560; }
+  h3 { font-size: 0.95rem; color: #16213e; margin: 1rem 0 0.3rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.88rem; }
+  th { background: #0f3460; color: #fff; text-align: left; padding: 0.4rem 0.5rem; }
+  td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #ddd; vertical-align: top; }
+  code { background: #f0f0f5; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.88em; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 0.8rem 1rem; border-radius: 5px;
+        overflow-x: auto; margin: 0.5rem 0 1rem; font-size: 0.82rem; line-height: 1.4; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .section { margin-bottom: 1.5rem; }
+</style>
+</head>
+<body>
+
+<h1>EKS Node Bootstrap Contract</h1>
+<p class="subtitle">What an AMI needs to join an EKS cluster. Print-friendly reference.</p>
+
+<div class="section">
+<h2>1. Binaries Required on the AMI</h2>
+<table>
+  <tr><th>Binary</th><th>Purpose</th><th>Reference path</th></tr>
+  <tr><td><code>kubelet</code></td><td>Node agent — registers with API server, runs pods</td><td><code>/usr/bin/kubelet</code></td></tr>
+  <tr><td><code>containerd</code></td><td>Container runtime</td><td><code>/usr/bin/containerd</code></td></tr>
+  <tr><td><code>aws-iam-authenticator</code></td><td>IAM-based auth to the K8s API</td><td><code>/usr/local/bin/aws-iam-authenticator</code></td></tr>
+  <tr><td>CNI plugins</td><td>Pod networking</td><td><code>/opt/cni/bin/</code></td></tr>
+  <tr><td><code>ecr-credential-provider</code></td><td>ECR image pull auth</td><td><code>/etc/eks/image-credential-provider/</code></td></tr>
+  <tr><td><code>iptables</code></td><td>kube-proxy networking rules</td><td><code>/usr/sbin/iptables</code></td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>2. Cluster Parameters (provided at boot)</h2>
+<table>
+  <tr><th>Parameter</th><th>NodeConfig field</th><th>Retrieval command</th></tr>
+  <tr><td>Cluster name</td><td><code>spec.cluster.name</code></td><td>Known at deploy time</td></tr>
+  <tr><td>API server endpoint</td><td><code>spec.cluster.apiServerEndpoint</code></td><td><code>aws eks describe-cluster --name X --query cluster.endpoint</code></td></tr>
+  <tr><td>Certificate authority</td><td><code>spec.cluster.certificateAuthority</code></td><td><code>aws eks describe-cluster --name X --query cluster.certificateAuthority.data</code></td></tr>
+  <tr><td>Service CIDR</td><td><code>spec.cluster.cidr</code></td><td><code>aws eks describe-cluster --name X --query cluster.kubernetesNetworkConfig.serviceIpv4Cidr</code></td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>3. Minimal NodeConfig</h2>
+<pre><code>---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: my-cluster
+    apiServerEndpoint: https://ABCDEF.gr7.us-east-2.eks.amazonaws.com
+    certificateAuthority: LS0tLS1CRUdJTi...==
+    cidr: 10.100.0.0/16</code></pre>
+</div>
+
+<div class="section">
+<h2>4. MIME Multi-Part User Data</h2>
+<pre><code>MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+--BOUNDARY
+Content-Type: application/node.eks.aws
+
+---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: my-cluster
+    apiServerEndpoint: https://...
+    certificateAuthority: LS0t...
+    cidr: 10.100.0.0/16
+
+--BOUNDARY
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+echo "runs between nodeadm-config and nodeadm-run"
+
+--BOUNDARY--</code></pre>
+</div>
+
+<div class="section">
+<h2>5. AWS Infrastructure Requirements</h2>
+<table>
+  <tr><th>Requirement</th><th>Detail</th></tr>
+  <tr><td>Node IAM role</td><td>Policies: <code>AmazonEKSWorkerNodePolicy</code>, <code>AmazonEKS_CNI_Policy</code>, <code>AmazonEC2ContainerRegistryReadOnly</code></td></tr>
+  <tr><td>Instance profile</td><td>Attached to EC2 instance, references node IAM role</td></tr>
+  <tr><td>Security group</td><td>Cluster SG — allows control plane ↔ node traffic</td></tr>
+  <tr><td>Node authorization</td><td>IAM role must be mapped to K8s identity via access entries or <code>aws-auth</code> ConfigMap</td></tr>
+  <tr><td>EC2 tag</td><td><code>kubernetes.io/cluster/&lt;name&gt; = owned</code></td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>6. nodeadm Boot Sequence (AL2023)</h2>
+<table>
+  <tr><th>Order</th><th>Service</th><th>What happens</th></tr>
+  <tr><td>1</td><td><code>nodeadm-config</code></td><td>Before user data — baseline containerd + kubelet config</td></tr>
+  <tr><td>2</td><td>cloud-init user data</td><td>Your shell scripts run here</td></tr>
+  <tr><td>3</td><td><code>nodeadm-run</code></td><td>After user data — merges all config, starts kubelet, node registers</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>7. Config Files Written by nodeadm</h2>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>/etc/kubernetes/kubelet/config.json</code></td><td>Kubelet configuration (clusterDNS, auth, TLS bootstrap, runtime endpoint)</td></tr>
+  <tr><td><code>/var/lib/kubelet/kubeconfig</code></td><td>Kubelet kubeconfig (API server URL + auth)</td></tr>
+  <tr><td><code>/etc/eks/kubelet/environment</code></td><td>Kubelet environment variables / startup flags</td></tr>
+  <tr><td><code>/etc/kubernetes/pki/ca.crt</code></td><td>Cluster CA certificate for TLS</td></tr>
+  <tr><td><code>/etc/containerd/config.toml</code></td><td>Containerd runtime configuration</td></tr>
+  <tr><td><code>/etc/eks/image-credential-provider/config.json</code></td><td>ECR credential provider config</td></tr>
+  <tr><td><code>/etc/sysctl.d/99-nodeadm.conf</code></td><td>Sysctl settings (IP forwarding for pod networking)</td></tr>
+  <tr><td><code>/etc/modules-load.d/containerd.conf</code></td><td>Kernel modules for container networking</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>8. Debugging Commands</h2>
+<pre><code># nodeadm boot logs
+journalctl -u nodeadm-config --no-pager
+journalctl -u nodeadm-run --no-pager
+
+# Service status
+systemctl status kubelet
+systemctl status containerd
+
+# Kubelet logs
+journalctl -u kubelet -f
+
+# Read user data from inside the node (IMDSv2)
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/user-data
+
+# SSM session (from your workstation)
+aws ssm start-session --target INSTANCE_ID</code></pre>
+</div>
+
+<div class="section">
+<h2>9. eksctl Self-Managed Config (Custom AMI)</h2>
+<pre><code>nodeGroups:            # NOT managedNodeGroups
+  - name: custom-nodes
+    instanceType: t3.medium
+    desiredCapacity: 2
+    amiFamily: AmazonLinux2023
+    ami: ami-YOUR_CUSTOM_AMI_ID</code></pre>
+</div>
+
+</body>
+</html>

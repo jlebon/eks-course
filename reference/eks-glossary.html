@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EKS Glossary — Quick Reference</title>
+<style>
+  @media print { body { font-size: 11pt; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 800px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e;
+         line-height: 1.6; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.5rem; color: #0f3460; }
+  .subtitle { color: #666; margin-bottom: 2rem; font-size: 0.9rem; }
+  h2 { font-size: 1.1rem; color: #e94560; margin: 1.8rem 0 0.8rem; padding-bottom: 0.3rem;
+       border-bottom: 2px solid #e94560; }
+  dl { display: grid; grid-template-columns: 1fr; gap: 0; }
+  dt { font-weight: 600; color: #0f3460; margin-top: 0.8rem; }
+  dd { margin-left: 1.2rem; margin-bottom: 0.4rem; color: #333; }
+  code { background: #f0f0f5; padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
+  .tag { display: inline-block; font-size: 0.7rem; padding: 0.1em 0.5em; border-radius: 3px;
+         margin-left: 0.5em; vertical-align: middle; }
+  .tag-aws { background: #ff9900; color: #fff; }
+  .tag-k8s { background: #326ce5; color: #fff; }
+  .tag-tool { background: #2ea44f; color: #fff; }
+</style>
+</head>
+<body>
+
+<h1>EKS Glossary</h1>
+<p class="subtitle">Quick reference for Amazon EKS terminology. Print-friendly.</p>
+
+<h2>Architecture</h2>
+<dl>
+  <dt>Control Plane <span class="tag tag-aws">AWS-managed</span></dt>
+  <dd>The Kubernetes brain — API server, etcd, scheduler, controller manager. Fully managed by AWS across 3 AZs. You never SSH into it.</dd>
+
+  <dt>Data Plane</dt>
+  <dd>The worker nodes that actually run your pods. Lives in <em>your</em> VPC. You manage it (unless using Fargate or EKS Auto Mode).</dd>
+
+  <dt>EKS-managed VPC</dt>
+  <dd>A separate VPC owned by AWS where the control plane runs. Connected to your VPC via cross-account ENIs.</dd>
+
+  <dt>Cross-account ENIs</dt>
+  <dd>Elastic Network Interfaces placed in your VPC's subnets that let the control plane communicate with your worker nodes.</dd>
+
+  <dt>Cluster Endpoint</dt>
+  <dd>The HTTPS URL for the Kubernetes API server. Can be public, private, or both. Workers and <code>kubectl</code> connect here.</dd>
+</dl>
+
+<h2>Node Types</h2>
+<dl>
+  <dt>EKS Auto Mode <span class="tag tag-aws">AWS-managed</span></dt>
+  <dd>AWS manages everything — node provisioning, scaling, patching, networking. Least operational burden, least control.</dd>
+
+  <dt>Managed Node Group <span class="tag tag-aws">AWS-managed</span></dt>
+  <dd>AWS manages an Auto Scaling Group of EC2 instances for you. You choose instance type, AMI family, and scaling bounds. AWS handles rolling updates.</dd>
+
+  <dt>Self-Managed Node Group</dt>
+  <dd>You manage EC2 instances directly via your own Auto Scaling Group and launch template. Full control — required for custom AMIs that don't fit managed node group constraints.</dd>
+
+  <dt>Fargate <span class="tag tag-aws">AWS-managed</span></dt>
+  <dd>Serverless compute. Each pod gets its own isolated micro-VM. No nodes to manage. Limited to Linux, no DaemonSets.</dd>
+</dl>
+
+<h2>Node Bootstrap</h2>
+<dl>
+  <dt><code>nodeadm</code> <span class="tag tag-tool">Tool</span></dt>
+  <dd>The AL2023-era node initialization tool. Uses a YAML <code>NodeConfig</code> schema. Replaces <code>bootstrap.sh</code>. Runs as two systemd services: <code>nodeadm-config</code> (before user data) and <code>nodeadm-run</code> (after user data).</dd>
+
+  <dt><code>bootstrap.sh</code> <span class="tag tag-tool">Tool</span></dt>
+  <dd>The legacy AL2 bootstrap script at <code>/etc/eks/bootstrap.sh</code>. Configures kubelet, connects node to cluster. Still used by AL2 and some custom AMIs.</dd>
+
+  <dt>NodeConfig</dt>
+  <dd>The YAML object (<code>apiVersion: node.eks.aws/v1alpha1</code>) passed to <code>nodeadm</code>. Minimum required fields: cluster name, API server endpoint, certificate authority, service CIDR.</dd>
+
+  <dt>User Data</dt>
+  <dd>The EC2 instance metadata script that runs at boot. For EKS nodes, this is where bootstrap commands or <code>NodeConfig</code> YAML goes. Specified in the launch template.</dd>
+</dl>
+
+<h2>AWS Primitives (EKS-relevant)</h2>
+<dl>
+  <dt>VPC (Virtual Private Cloud) <span class="tag tag-aws">AWS</span></dt>
+  <dd>Your isolated network in AWS. An EKS cluster lives inside a VPC. Requires subnets in ≥2 AZs.</dd>
+
+  <dt>Subnet</dt>
+  <dd>A range of IPs in a single AZ. <strong>Private subnets</strong> (no internet gateway route) are for worker nodes. <strong>Public subnets</strong> are for load balancers.</dd>
+
+  <dt>IAM Role <span class="tag tag-aws">AWS</span></dt>
+  <dd>An AWS identity with permissions. EKS needs two: a <strong>cluster role</strong> (for the control plane) and a <strong>node role</strong> (for worker instances).</dd>
+
+  <dt>Launch Template <span class="tag tag-aws">AWS</span></dt>
+  <dd>An EC2 resource that defines instance configuration — AMI ID, instance type, user data, security groups, etc. Node groups reference a launch template.</dd>
+
+  <dt>Auto Scaling Group (ASG) <span class="tag tag-aws">AWS</span></dt>
+  <dd>Manages a fleet of EC2 instances — scales in/out, replaces unhealthy instances. Every node group is backed by an ASG.</dd>
+
+  <dt>CloudFormation <span class="tag tag-aws">AWS</span></dt>
+  <dd>AWS infrastructure-as-code service. <code>eksctl</code> generates CloudFormation stacks to create clusters and node groups.</dd>
+
+  <dt>AMI (Amazon Machine Image) <span class="tag tag-aws">AWS</span></dt>
+  <dd>A template for EC2 instances containing the OS, software, and configuration. EKS provides optimised AMIs; you can also bring your own.</dd>
+
+  <dt>ENI (Elastic Network Interface) <span class="tag tag-aws">AWS</span></dt>
+  <dd>A virtual network card attached to an EC2 instance. The VPC CNI plugin attaches ENIs to nodes and assigns secondary IPs to pods.</dd>
+</dl>
+
+<h2>Tools</h2>
+<dl>
+  <dt><code>eksctl</code> <span class="tag tag-tool">Tool</span></dt>
+  <dd>The official CLI for EKS. Creates clusters via CloudFormation. Supports YAML config files. Simplest way to get started.</dd>
+
+  <dt><code>aws eks</code> <span class="tag tag-tool">Tool</span></dt>
+  <dd>The EKS subcommand of the AWS CLI. Lower-level than <code>eksctl</code>. Used for cluster creation, kubeconfig updates, and direct API calls.</dd>
+
+  <dt><code>kubectl</code> <span class="tag tag-k8s">K8s</span></dt>
+  <dd>Standard Kubernetes CLI. Works with EKS once kubeconfig is configured via <code>aws eks update-kubeconfig</code>.</dd>
+</dl>
+
+<h2>Networking</h2>
+<dl>
+  <dt>VPC CNI Plugin <span class="tag tag-aws">AWS</span> <span class="tag tag-k8s">K8s</span></dt>
+  <dd>Assigns real VPC IP addresses to pods (no overlay network). Attaches ENIs to nodes, assigns secondary IPs from VPC CIDR to pods.</dd>
+
+  <dt>Security Group <span class="tag tag-aws">AWS</span></dt>
+  <dd>A virtual firewall for EC2 instances. EKS creates a <strong>cluster security group</strong> that allows control plane ↔ node communication.</dd>
+
+  <dt>NAT Gateway <span class="tag tag-aws">AWS</span></dt>
+  <dd>Allows instances in private subnets to reach the internet (for pulling images, etc.) without being directly reachable from the internet.</dd>
+</dl>
+
+</body>
+</html>

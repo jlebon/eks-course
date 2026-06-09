@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 3 — Node Groups &amp; the Bootstrap Contract</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         max-width: 780px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a2e;
+         line-height: 1.7; background: #fafbfc; }
+  h1 { font-size: 1.8rem; color: #0f3460; margin-bottom: 0.3rem; }
+  .lesson-meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  h2 { font-size: 1.3rem; color: #0f3460; margin: 2.5rem 0 0.8rem;
+       padding-bottom: 0.3rem; border-bottom: 2px solid #e94560; }
+  h3 { font-size: 1.05rem; color: #16213e; margin: 1.5rem 0 0.5rem; }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin: 0 0 1rem 1.5rem; }
+  li { margin-bottom: 0.4rem; }
+  code { background: #e8ecf1; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #1a1a2e; color: #e0e0e0; padding: 1rem 1.2rem; border-radius: 6px;
+        overflow-x: auto; margin: 1rem 0; font-size: 0.82rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .comment { color: #6a9955; }
+
+  .callout { border-left: 4px solid; padding: 0.8rem 1rem; margin: 1.2rem 0;
+             border-radius: 0 6px 6px 0; }
+  .callout-info { background: #e8f4fd; border-color: #2196F3; }
+  .callout-warn { background: #fff8e1; border-color: #ff9800; }
+  .callout-key { background: #e8f5e9; border-color: #4caf50; }
+  .callout-bootc { background: #f3e5f5; border-color: #9c27b0; }
+  .callout strong { display: block; margin-bottom: 0.3rem; }
+
+  .diagram { background: #fff; border: 1px solid #ddd; border-radius: 8px;
+             padding: 1.5rem; margin: 1.5rem 0; font-family: 'Courier New', monospace;
+             font-size: 0.8rem; line-height: 1.35; white-space: pre; overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.92rem; }
+  th { background: #0f3460; color: #fff; text-align: left; padding: 0.6rem; }
+  td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
+
+  .cite { font-size: 0.8rem; color: #666; }
+  .cite a { color: #2196F3; }
+
+  .quiz { background: #fff; border: 2px solid #0f3460; border-radius: 8px;
+          padding: 1.5rem; margin: 1.5rem 0; }
+  .quiz h3 { margin-top: 0; color: #0f3460; }
+  .quiz label { display: block; padding: 0.5rem 0.8rem; margin: 0.4rem 0;
+                border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+  .quiz label:hover { background: #f0f4ff; }
+  .quiz input[type="radio"] { margin-right: 0.5rem; }
+  .quiz .feedback { display: none; margin-top: 0.8rem; padding: 0.8rem;
+                    border-radius: 4px; font-size: 0.95rem; }
+  .quiz .feedback.correct { background: #e8f5e9; border: 1px solid #4caf50; }
+  .quiz .feedback.incorrect { background: #fce4ec; border: 1px solid #e57373; }
+  .quiz button { margin-top: 0.8rem; padding: 0.5rem 1.2rem; background: #0f3460;
+                 color: #fff; border: none; border-radius: 4px; cursor: pointer;
+                 font-size: 0.9rem; }
+  .quiz button:hover { background: #16213e; }
+
+  .footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #ddd;
+            color: #888; font-size: 0.85rem; }
+  .footer a { color: #2196F3; }
+</style>
+</head>
+<body>
+
+<h1>Lesson 3: Node Groups &amp; the Bootstrap Contract</h1>
+<p class="lesson-meta">~15 min · No AWS account needed · Directly relevant to your bootc AMI goal</p>
+
+<p>This lesson answers the question at the heart of your mission: <strong>what exactly does an AMI need to do to become an EKS node?</strong> We'll cover the two node group types in detail, then dissect the bootstrap contract — the specific requirements your bootc AMI must satisfy.</p>
+
+<h2>Managed vs Self-Managed: The Full Picture</h2>
+
+<p>You know the four compute options from Lesson 1. For custom AMI work, only two matter: managed node groups and self-managed node groups. Here's the complete comparison:</p>
+
+<table>
+  <tr>
+    <th style="width:35%">Aspect</th>
+    <th style="width:32%">Managed Node Group</th>
+    <th style="width:33%">Self-Managed Node Group</th>
+  </tr>
+  <tr>
+    <td><strong>Who creates the ASG?</strong></td>
+    <td>AWS (via EKS API)</td>
+    <td>You (via CloudFormation, eksctl, or Terraform)</td>
+  </tr>
+  <tr>
+    <td><strong>Rolling updates?</strong></td>
+    <td>AWS handles — respects PDBs, drains nodes</td>
+    <td>You handle — manual or via tooling</td>
+  </tr>
+  <tr>
+    <td><strong>Custom AMI?</strong></td>
+    <td>Yes, but must declare an <code>amiFamily</code> from: AL2023, AL2, Bottlerocket, Ubuntu</td>
+    <td>Yes, <strong>any AMI</strong> — no family restriction</td>
+  </tr>
+  <tr>
+    <td><strong>User data handling</strong></td>
+    <td>AWS merges your user data with its own (unless custom AMI, then you own it entirely)</td>
+    <td>You own it entirely — always</td>
+  </tr>
+  <tr>
+    <td><strong>Node health checks</strong></td>
+    <td>AWS monitors — unhealthy nodes auto-replaced</td>
+    <td>Only ASG health checks (EC2-level)</td>
+  </tr>
+  <tr>
+    <td><strong>Shows in EKS console?</strong></td>
+    <td>Yes — under Compute → Node Groups</td>
+    <td>Nodes appear, but no "node group" entity in EKS API</td>
+  </tr>
+  <tr>
+    <td><strong>Launch template</strong></td>
+    <td>Optional (AWS creates one if you don't)</td>
+    <td>Required — you create and manage it</td>
+  </tr>
+  <tr>
+    <td><strong>Node IAM role</strong></td>
+    <td>Specified in EKS API → auto-authorized</td>
+    <td>You must authorize via access entries or <code>aws-auth</code> ConfigMap</td>
+  </tr>
+  <tr>
+    <td><strong>Node tagging</strong></td>
+    <td>Automatic</td>
+    <td>You must tag: <code>kubernetes.io/cluster/&lt;name&gt; = owned</code></td>
+  </tr>
+</table>
+
+<div class="callout callout-bootc">
+  <strong>🔧 For your bootc AMI</strong>
+  Your bootc image is its own OS — not AL2023, not Bottlerocket, not Ubuntu. This means <strong>managed node groups may not work</strong> unless your bootc image can satisfy the bootstrap contract of one of the supported AMI families (e.g. running <code>nodeadm</code> like AL2023). <strong>Self-managed node groups are the safe bet</strong> — they have no AMI family restriction.
+</div>
+
+<p class="cite">Sources: <a href="https://docs.aws.amazon.com/eks/latest/userguide/create-managed-node-group.html">AWS Docs: Managed node groups</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/worker.html">AWS Docs: Self-managed nodes</a></p>
+
+<h2>The Bootstrap Contract</h2>
+
+<p>For any EC2 instance to become an EKS node, it must satisfy a <strong>contract</strong> — a set of requirements that allow kubelet on the instance to register with the EKS API server. Here's every piece:</p>
+
+<h3>What must be on the AMI (baked in)</h3>
+
+<table>
+  <tr><th>Component</th><th>Purpose</th><th>Path (AL2023 reference)</th></tr>
+  <tr>
+    <td><code>kubelet</code></td>
+    <td>The node agent that registers with the API server and runs pods</td>
+    <td><code>/usr/bin/kubelet</code></td>
+  </tr>
+  <tr>
+    <td><code>containerd</code></td>
+    <td>Container runtime</td>
+    <td><code>/usr/bin/containerd</code></td>
+  </tr>
+  <tr>
+    <td><code>aws-iam-authenticator</code></td>
+    <td>Authenticates kubelet to the EKS API using the node's IAM role</td>
+    <td><code>/usr/local/bin/aws-iam-authenticator</code></td>
+  </tr>
+  <tr>
+    <td>CNI plugins</td>
+    <td>Networking binaries for pod networking</td>
+    <td><code>/opt/cni/bin/</code></td>
+  </tr>
+  <tr>
+    <td>ECR credential provider</td>
+    <td>Lets kubelet pull images from ECR</td>
+    <td><code>/etc/eks/image-credential-provider/</code></td>
+  </tr>
+  <tr>
+    <td><code>iptables</code></td>
+    <td>Required for kube-proxy networking rules</td>
+    <td><code>/usr/sbin/iptables</code></td>
+  </tr>
+  <tr>
+    <td>A bootstrap mechanism</td>
+    <td>Something that configures and starts kubelet at boot</td>
+    <td><code>nodeadm</code> (AL2023) or <code>/etc/eks/bootstrap.sh</code> (legacy AL2)</td>
+  </tr>
+</table>
+
+<p class="cite">Source: <a href="https://github.com/awslabs/amazon-eks-ami">GitHub: amazon-eks-ami</a>, <a href="https://docs.aws.amazon.com/eks/latest/userguide/eks-ami-build-scripts.html">AWS Docs: Build a custom EKS AMI</a></p>
+
+<h3>What must be provided at boot (via user data)</h3>
+
+<p>The bootstrap mechanism — whether <code>nodeadm</code> or <code>bootstrap.sh</code> — needs to configure kubelet with four pieces of cluster-specific information:</p>
+
+<table>
+  <tr><th>Parameter</th><th>What it is</th><th>How to retrieve it</th></tr>
+  <tr>
+    <td><strong>Cluster name</strong></td>
+    <td>The name of your EKS cluster</td>
+    <td>You already know this</td>
+  </tr>
+  <tr>
+    <td><strong>API server endpoint</strong></td>
+    <td>The HTTPS URL of the cluster's API server</td>
+    <td><code>aws eks describe-cluster --name &lt;name&gt; --query cluster.endpoint</code></td>
+  </tr>
+  <tr>
+    <td><strong>Certificate authority</strong></td>
+    <td>Base64-encoded CA cert for TLS to the API server</td>
+    <td><code>aws eks describe-cluster --name &lt;name&gt; --query cluster.certificateAuthority.data</code></td>
+  </tr>
+  <tr>
+    <td><strong>Service CIDR</strong></td>
+    <td>The cluster's Kubernetes service IP range (used to derive cluster DNS IP)</td>
+    <td><code>aws eks describe-cluster --name &lt;name&gt; --query cluster.kubernetesNetworkConfig.serviceIpv4Cidr</code></td>
+  </tr>
+</table>
+
+<div class="callout callout-key">
+  <strong>🔑 Key insight</strong>
+  These four parameters are the <em>entire</em> cluster-specific contract. Everything else is either baked into the AMI or provided by AWS infrastructure (IAM role via instance profile, VPC networking via ENI). If your bootc AMI can accept these four values and use them to start kubelet correctly, it will join the cluster.
+</div>
+
+<h3>What must exist in AWS (infrastructure)</h3>
+<ul>
+  <li><strong>Node IAM role</strong> with policies: <code>AmazonEKSWorkerNodePolicy</code>, <code>AmazonEKS_CNI_Policy</code>, <code>AmazonEC2ContainerRegistryReadOnly</code></li>
+  <li><strong>Instance profile</strong> attached to the EC2 instance, referencing the node IAM role</li>
+  <li><strong>Security group</strong> allowing traffic between the node and the control plane (the cluster security group)</li>
+  <li><strong>Node authorization</strong> — the node's IAM role must be granted Kubernetes permissions via access entries or <code>aws-auth</code> ConfigMap</li>
+  <li><strong>EC2 tag</strong>: <code>kubernetes.io/cluster/&lt;cluster-name&gt; = owned</code></li>
+</ul>
+
+<h2>nodeadm: The Modern Bootstrap Tool</h2>
+
+<p>Since K8s 1.33+, only AL2023 and Bottlerocket AMIs are published by AWS. AL2023 uses <code>nodeadm</code>, which uses a YAML-based <code>NodeConfig</code> object. This is now the standard way to bootstrap EKS nodes.</p>
+
+<h3>Minimal NodeConfig</h3>
+
+<pre><code><span class="comment"># This is the minimum viable NodeConfig</span>
+---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: my-cluster
+    apiServerEndpoint: https://ABCDEF1234567890.gr7.us-east-2.eks.amazonaws.com
+    certificateAuthority: LS0tLS1CRUdJTi...base64...==
+    cidr: 10.100.0.0/16</code></pre>
+
+<h3>NodeConfig with kubelet customization</h3>
+
+<pre><code>---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: my-cluster
+    apiServerEndpoint: https://ABCDEF1234567890.gr7.us-east-2.eks.amazonaws.com
+    certificateAuthority: LS0tLS1CRUdJTi...base64...==
+    cidr: 10.100.0.0/16
+  kubelet:
+    config:
+      maxPods: 110
+      shutdownGracePeriod: 30s
+    flags:
+      - "--node-labels=role=worker,env=dev"</code></pre>
+
+<h3>Full NodeConfig API</h3>
+
+<p>The <code>NodeConfigSpec</code> has these top-level sections:</p>
+
+<table>
+  <tr><th>Section</th><th>Purpose</th></tr>
+  <tr><td><code>cluster</code></td><td>Cluster connection info (name, endpoint, CA, CIDR) — <strong>required</strong></td></tr>
+  <tr><td><code>kubelet</code></td><td>Kubelet configuration (<code>config</code> for KubeletConfiguration fields, <code>flags</code> for CLI flags)</td></tr>
+  <tr><td><code>containerd</code></td><td>Inline containerd TOML config, merged with defaults</td></tr>
+  <tr><td><code>instance</code></td><td>Instance-level options (local storage strategy)</td></tr>
+  <tr><td><code>featureGates</code></td><td>Enable/disable application features</td></tr>
+</table>
+
+<p class="cite">Source: <a href="https://awslabs.github.io/amazon-eks-ami/nodeadm/doc/api/">nodeadm API reference</a>, <a href="https://github.com/awslabs/amazon-eks-ami/tree/main/nodeadm">GitHub: amazon-eks-ami/nodeadm</a></p>
+
+<h3>How nodeadm runs on AL2023</h3>
+
+<p><code>nodeadm</code> runs as two systemd services, in this order:</p>
+
+<div class="diagram">
+Boot sequence on an AL2023 EKS node:
+
+  1. EC2 instance starts
+  2. cloud-init begins
+  3. ┌─ nodeadm-config.service ──────────────────────┐
+     │ Runs BEFORE user data                         │
+     │ Sets up baseline containerd + kubelet config   │
+     └───────────────────────────────────────────────┘
+  4. ┌─ cloud-init user data ────────────────────────┐
+     │ Your shell scripts run here                    │
+     │ You can write files to /etc/eks/nodeadm.d/     │
+     └───────────────────────────────────────────────┘
+  5. ┌─ nodeadm-run.service ─────────────────────────┐
+     │ Runs AFTER user data                           │
+     │ Merges all NodeConfig sources                  │
+     │ Starts containerd, kubelet, etc.               │
+     │ Node registers with API server                 │
+     └───────────────────────────────────────────────┘
+  6. Node becomes Ready</div>
+
+<div class="callout callout-warn">
+  <strong>⚠️ Do NOT run <code>nodeadm init</code> manually</strong>
+  On EKS-optimized AL2023 AMIs, <code>nodeadm init</code> is already wired into the systemd boot sequence. Running it again in user data will break things (misconfigured ENIs, duplicate bootstrap). If you need to add config, write YAML files to <code>/etc/eks/nodeadm.d/</code> — they'll be merged automatically.
+</div>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/userguide/al2023.html">AWS Docs: AL2023 nodeadm</a></p>
+
+<h2>User Data Formats</h2>
+
+<p>How you pass the <code>NodeConfig</code> to the instance depends on your setup:</p>
+
+<h3>Option A: Plain NodeConfig (self-managed, simple case)</h3>
+
+<p>If your AMI expects <code>nodeadm</code> to read from user data and you have no shell scripts to run:</p>
+
+<pre><code>---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: my-cluster
+    apiServerEndpoint: https://...
+    certificateAuthority: LS0t...
+    cidr: 10.100.0.0/16</code></pre>
+
+<h3>Option B: MIME multi-part (when mixing NodeConfig + shell scripts)</h3>
+
+<p>If you need to run shell scripts <em>and</em> provide NodeConfig, use MIME format:</p>
+
+<pre><code>MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+--BOUNDARY
+Content-Type: application/node.eks.aws
+
+---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: my-cluster
+    apiServerEndpoint: https://...
+    certificateAuthority: LS0t...
+    cidr: 10.100.0.0/16
+  kubelet:
+    flags:
+      - "--node-labels=role=worker"
+
+--BOUNDARY
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+echo "Custom setup running before nodeadm-run"
+<span class="comment"># install packages, configure things, etc.</span>
+
+--BOUNDARY--</code></pre>
+
+<div class="callout callout-info">
+  <strong>ℹ️ MIME merging</strong>
+  You can include <em>multiple</em> <code>application/node.eks.aws</code> MIME parts, each with a partial <code>NodeConfig</code>. <code>nodeadm</code> merges them in order — later values win. This lets you separate cluster config from kubelet customization.
+</div>
+
+<p class="cite">Source: <a href="https://awslabs.github.io/amazon-eks-ami/nodeadm/doc/examples/">nodeadm examples</a>, <a href="https://repost.aws/knowledge-center/custom-user-eks-2023">AWS re:Post: Custom data with AL2023</a></p>
+
+<h2>Launch Templates: The Glue</h2>
+
+<p>A <strong>launch template</strong> is an EC2 resource that ties together the AMI, instance type, user data, and networking config. Every node group (managed or self-managed) uses one.</p>
+
+<pre><code><span class="comment"># Key fields in a launch template (conceptual)</span>
+LaunchTemplate:
+  ImageId: ami-0123456789abcdef0    <span class="comment"># Your AMI</span>
+  InstanceType: t3.medium
+  UserData: &lt;base64-encoded&gt;        <span class="comment"># NodeConfig or MIME doc</span>
+  SecurityGroupIds:
+    - sg-cluster-security-group     <span class="comment"># Must include cluster SG</span>
+  IamInstanceProfile:
+    Arn: arn:aws:iam::...:instance-profile/node-role
+  TagSpecifications:
+    - Tags:
+        - Key: kubernetes.io/cluster/my-cluster
+          Value: owned</code></pre>
+
+<p>When using <strong>eksctl</strong>, you rarely create launch templates manually — eksctl generates them. But understanding the structure matters because you'll need to customize the AMI ID and user data for your bootc image.</p>
+
+<h2>eksctl Config: Self-Managed with Custom AMI</h2>
+
+<p>Here's what an eksctl config looks like when using a custom AMI with a self-managed node group:</p>
+
+<pre><code>apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: my-cluster
+  region: us-east-2
+  version: "1.36"
+
+<span class="comment"># Self-managed node group with custom AMI</span>
+nodeGroups:
+  - name: custom-nodes
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 4
+    amiFamily: AmazonLinux2023      <span class="comment"># tells eksctl the bootstrap style</span>
+    ami: ami-0123456789abcdef0      <span class="comment"># your custom AMI ID</span>
+    ssh:
+      allow: false</code></pre>
+
+<p>For AL2023-family AMIs, eksctl automatically generates the minimal <code>NodeConfig</code> user data with the cluster's endpoint, CA, and CIDR. You don't need <code>overrideBootstrapCommand</code> — eksctl injects the config into the launch template for you.</p>
+
+<p>If you need to customize the <code>NodeConfig</code>, use <code>overrideBootstrapCommand</code>:</p>
+
+<pre><code>nodeGroups:
+  - name: custom-nodes
+    instanceType: t3.medium
+    desiredCapacity: 2
+    amiFamily: AmazonLinux2023
+    ami: ami-0123456789abcdef0
+    overrideBootstrapCommand: |
+      apiVersion: node.eks.aws/v1alpha1
+      kind: NodeConfig
+      spec:
+        instance:
+          localStorage:
+            strategy: RAID0
+        kubelet:
+          config:
+            maxPods: 110</code></pre>
+
+<p>This custom config is <strong>prepended</strong> to the user data and merged by <code>nodeadm</code> with the default config that eksctl generates.</p>
+
+<p class="cite">Source: <a href="https://docs.aws.amazon.com/eks/latest/eksctl/custom-ami-support.html">eksctl: Custom AMI support</a>, <a href="https://docs.aws.amazon.com/eks/latest/eksctl/node-bootstrapping.html">eksctl: Node bootstrapping</a></p>
+
+<h2>What This Means for Your Bootc AMI</h2>
+
+<div class="callout callout-bootc">
+  <strong>🔧 Connecting the dots</strong>
+  <p style="margin-bottom: 0.5rem;">Your bootc container image → AMI must satisfy this contract:</p>
+  <ol style="margin-bottom: 0;">
+    <li><strong>Bake in the binaries:</strong> kubelet, containerd, aws-iam-authenticator, CNI plugins, ECR credential provider, iptables</li>
+    <li><strong>Bake in a bootstrap mechanism:</strong> Either include <code>nodeadm</code> and wire it into systemd (like AL2023), or build your own mechanism that reads the 4 cluster parameters and configures + starts kubelet</li>
+    <li><strong>Accept cluster params at boot:</strong> Via user data (EC2 IMDS) containing a <code>NodeConfig</code> YAML, or via another mechanism</li>
+    <li><strong>Deploy as self-managed node group:</strong> Use eksctl's <code>nodeGroups</code> (not <code>managedNodeGroups</code>) with <code>ami: &lt;your-ami-id&gt;</code>. Set <code>amiFamily: AmazonLinux2023</code> if your bootc image uses <code>nodeadm</code></li>
+  </ol>
+</div>
+
+<p>The <a href="https://github.com/awslabs/amazon-eks-ami">amazon-eks-ami</a> repo is the reference implementation. When building your bootc image, study what it installs and how it wires up <code>nodeadm</code>. The most relevant parts are:</p>
+<ul>
+  <li><strong>Packer templates</strong> — what packages and binaries get installed</li>
+  <li><strong>Runtime directory</strong> — the systemd units for <code>nodeadm-config</code> and <code>nodeadm-run</code></li>
+  <li><strong>nodeadm source</strong> — the Go binary that processes <code>NodeConfig</code></li>
+</ul>
+
+<h2>Check Your Understanding</h2>
+
+<div class="quiz" id="q1">
+  <h3>Question 1: Your bootc AMI doesn't fit any of the managed node group AMI families. What's your best option?</h3>
+  <label><input type="radio" name="q1" value="a"> Use EKS Auto Mode and let AWS figure it out</label>
+  <label><input type="radio" name="q1" value="b"> Use a self-managed node group — no AMI family restriction</label>
+  <label><input type="radio" name="q1" value="c"> Use a managed node group and set <code>amiFamily</code> to "Custom"</label>
+  <label><input type="radio" name="q1" value="d"> Use Fargate instead</label>
+  <button onclick="checkAnswer('q1', 'b')">Check</button>
+  <div class="feedback correct" id="q1-correct">✅ Correct! Self-managed node groups accept <strong>any AMI</strong> — there's no AMI family restriction. You control the launch template, user data, and bootstrap process entirely.</div>
+  <div class="feedback incorrect" id="q1-incorrect">❌ Not quite. Self-managed node groups are the answer — they have no AMI family restriction. Managed node groups require one of the recognized families. There's no "Custom" family option.</div>
+</div>
+
+<div class="quiz" id="q2">
+  <h3>Question 2: What are the four cluster-specific parameters that must be provided to the bootstrap mechanism?</h3>
+  <label><input type="radio" name="q2" value="a"> Cluster name, VPC ID, subnet IDs, security group ID</label>
+  <label><input type="radio" name="q2" value="b"> Cluster name, API server endpoint, certificate authority, service CIDR</label>
+  <label><input type="radio" name="q2" value="c"> Cluster name, IAM role ARN, instance type, region</label>
+  <label><input type="radio" name="q2" value="d"> API server endpoint, etcd endpoint, scheduler endpoint, controller endpoint</label>
+  <button onclick="checkAnswer('q2', 'b')">Check</button>
+  <div class="feedback correct" id="q2-correct">✅ Correct! The four parameters are: <strong>cluster name</strong>, <strong>API server endpoint</strong>, <strong>certificate authority</strong> (base64-encoded CA), and <strong>service CIDR</strong>. These are exactly what goes into the <code>NodeConfig.spec.cluster</code> section.</div>
+  <div class="feedback incorrect" id="q2-incorrect">❌ Not quite. The four parameters are: cluster name, API server endpoint, certificate authority (base64 CA data), and service CIDR. VPC/subnet/SG are handled at the infrastructure level, not the bootstrap level.</div>
+</div>
+
+<div class="quiz" id="q3">
+  <h3>Question 3: Why does AL2023's <code>nodeadm</code> require you to explicitly pass the API endpoint and CA, when the old <code>bootstrap.sh</code> auto-discovered them?</h3>
+  <label><input type="radio" name="q3" value="a"> Because nodeadm doesn't have AWS SDK access</label>
+  <label><input type="radio" name="q3" value="b"> To avoid API throttling during large-scale node launches (DescribeCluster calls)</label>
+  <label><input type="radio" name="q3" value="c"> Because the values change too frequently to cache</label>
+  <label><input type="radio" name="q3" value="d"> Because nodeadm runs before the network is available</label>
+  <button onclick="checkAnswer('q3', 'b')">Check</button>
+  <div class="feedback correct" id="q3-correct">✅ Correct! The old <code>bootstrap.sh</code> called <code>DescribeCluster</code> at boot to fetch these values. At scale (hundreds of nodes launching simultaneously), this caused API throttling. <code>nodeadm</code> avoids this by requiring the values upfront in user data.</div>
+  <div class="feedback incorrect" id="q3-incorrect">❌ Not quite. The reason is API throttling — when hundreds of nodes launch simultaneously, each one calling <code>DescribeCluster</code> would overwhelm the API. Providing the values statically in user data avoids this.</div>
+</div>
+
+<script>
+function checkAnswer(qId, correct) {
+  const selected = document.querySelector(`input[name="${qId}"]:checked`);
+  if (!selected) return;
+  document.getElementById(`${qId}-correct`).style.display = 'none';
+  document.getElementById(`${qId}-incorrect`).style.display = 'none';
+  if (selected.value === correct) {
+    document.getElementById(`${qId}-correct`).style.display = 'block';
+  } else {
+    document.getElementById(`${qId}-incorrect`).style.display = 'block';
+  }
+  document.querySelectorAll(`input[name="${qId}"]`).forEach(r => r.disabled = true);
+  document.querySelector(`#${qId} button`).disabled = true;
+}
+</script>
+
+<div class="footer">
+  <p><strong>What you learned:</strong> The exact differences between managed and self-managed node groups, the complete bootstrap contract (AMI components + cluster parameters + infrastructure), the <code>nodeadm</code> / <code>NodeConfig</code> system, user data formats (plain YAML vs MIME), launch template structure, and how all of this maps to your bootc AMI.</p>
+  <p><strong>Next lesson:</strong> Hands-on — we'll create a cluster with a self-managed node group using a custom AMI, debug the bootstrap process, and verify a custom node joins the cluster.</p>
+  <p><strong>Reference:</strong> See the <a href="../reference/eks-glossary.html">EKS Glossary</a> for term lookups.</p>
+  <p style="margin-top: 1rem;"><strong>Questions?</strong> This was a dense lesson. If anything about the bootstrap contract is unclear, ask your teaching agent — getting this right is critical for your bootc AMI work.</p>
+</div>
+
+</body>
+</html>
