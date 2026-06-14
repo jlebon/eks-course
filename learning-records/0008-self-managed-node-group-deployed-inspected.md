@@ -1,0 +1,3 @@
+# Self-managed node group deployed and inspected end-to-end
+
+User completed Lesson 4 hands-on. Deployed a self-managed node group with an official AL2023 AMI, inspected the launch template user data (NodeConfig), IAM role and policies, access entry, CloudFormation resources, and ASG. Shelled into the node via SSM and inspected nodeadm logs (nodeadm-config and nodeadm-run), kubelet config and kubeconfig, containerd config, all bootstrap contract binaries, user data from IMDS, systemd units, and sysctl/kernel module settings. Ran a workload and verified full node functionality. User now has a concrete mental model of what a working EKS node looks like from the inside — the baseline for building a bootc AMI replacement.

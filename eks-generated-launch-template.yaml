@@ -1,0 +1,63 @@
+{
+  "IamInstanceProfile": {
+    "Arn": "arn:aws:iam::418272754616:instance-profile/eksctl-jlebon-nodegroup-jlebon-selfmanaged-NodeInstanceProfile-1aGo68x22szh"
+  },
+  "BlockDeviceMappings": [
+    {
+      "DeviceName": "/dev/xvda",
+      "Ebs": {
+        "Encrypted": false,
+        "Iops": 3000,
+        "VolumeSize": 80,
+        "VolumeType": "gp3",
+        "Throughput": 125
+      }
+    }
+  ],
+  "NetworkInterfaces": [
+    {
+      "DeviceIndex": 0,
+      "Groups": [
+        "sg-084b1c6a8b4453ce5",
+        "sg-07a9d37ad7c4583b8"
+      ],
+      "NetworkCardIndex": 0
+    }
+  ],
+  "ImageId": "ami-00b1260805311fb7b",
+  "InstanceType": "t3.medium",
+  "UserData": "TUlNRS1WZXJzaW9uOiAxLjANCkNvbnRlbnQtVHlwZTogbXVsdGlwYXJ0L21peGVkOyBib3VuZGFyeT05ZTZjZDUzOWJjNDMwYzQwNjU1NDg1MjBmOTcxMzdlM2IyMjhlNGI2MzJhODhiODAxOWMyMTUwMDQzNmQNCg0KLS05ZTZjZDUzOWJjNDMwYzQwNjU1NDg1MjBmOTcxMzdlM2IyMjhlNGI2MzJhODhiODAxOWMyMTUwMDQzNmQNCkNvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vbm9kZS5la3MuYXdzDQoNCmFwaVZlcnNpb246IG5vZGUuZWtzLmF3cy92MWFscGhhMQpraW5kOiBOb2RlQ29uZmlnCm1ldGFkYXRhOiB7fQpzcGVjOgogIGNsdXN0ZXI6CiAgICBhcGlTZXJ2ZXJFbmRwb2ludDogaHR0cHM6Ly9BMTAzMzJEOTRCRTQwMDdCMzIxOTY3M0Y1OTVFNzhBOC5zazEuY2EtY2VudHJhbC0xLmVrcy5hbWF6b25hd3MuY29tCiAgICBjZXJ0aWZpY2F0ZUF1dGhvcml0eTogTFMwdExTMUNSVWRKVGlCRFJWSlVTVVpKUTBGVVJTMHRMUzB0Q2sxSlNVUkNWRU5EUVdVeVowRjNTVUpCWjBsSlNsTjBWR1ZIZERBNWVITjNSRkZaU2t0dldrbG9kbU5PUVZGRlRFSlJRWGRHVkVWVVRVSkZSMEV4VlVVS1FYaE5TMkV6Vm1sYVdFcDFXbGhTYkdONlFXVkdkekI1VG1wQk1rMVVRWGxOUkUxM1RrUnNZVVozTUhwT2FrRXlUVVJqZVUxRVRURk9SR3hoVFVKVmVBcEZla0ZTUW1kT1ZrSkJUVlJEYlhReFdXMVdlV0p0VmpCYVdFMTNaMmRGYVUxQk1FZERVM0ZIVTBsaU0wUlJSVUpCVVZWQlFUUkpRa1IzUVhkblowVkxDa0Z2U1VKQlVVTjVXa3hsV2pKNU5rVmxiMnhCZUM5RGNHaHllVFZoTnpBelZVRnRWSGhVYmt4TlRUbGpOVE14TmtWR1J6ZEtjRFZrYzJ4VlpqVktZamdLWjNKU1ZVNUNaamRpVUM5aVlqTm1SWGh6YkhvdldEUkZhVlptYW5kbVJITlhURE50ZG1oaVJ5OUNkVWg0YmxOcGRYWnRjMFprWTJNNFJVNDVOMk55TXdwblMxQjVkbGMyVkZGS1ZqWmFTbGQ2TlZadlNsUnFabWR5TVN0SFYySkxkbVpqWWtGRGRrdFdWV3BGZUVkUVNTOTNPVGh1U3pKME1sbHpPVVkyUm5WYUNqWnJNMFkyVHpaQmNGUjFObEp6UVhWRlVsbHBNakUwZVV0MmFpOUlWVXRtTUZCdWRuaFdWSGhpVVUwemJURkRXVE5aUW10U2FWTndXRXRhVFdneU0wa0tSblJpTDAxeFQzWkZObFZsZEhKM1NFOXNaMG80TTI1d2RsQlNOVllyUW1Gc1NqaDJUemxEUzIxU04zcEZURlZPWVhWNFpTOVFWekJ2YVc5T1lUVjFaQW9yVm5SNVEwOXpTM0pSYlU5a1kwTktlRWxqU0hOeVoxSlRMMUpTUVdkTlFrRkJSMnBYVkVKWVRVRTBSMEV4VldSRWQwVkNMM2RSUlVGM1NVTndSRUZRQ2tKblRsWklVazFDUVdZNFJVSlVRVVJCVVVndlRVSXdSMEV4VldSRVoxRlhRa0pTWWpWRlpsVklURXQzVjNOWFFYWlpiR3hQVVVGTVZYaE9lRWxFUVZZS1FtZE9Wa2hTUlVWRWFrRk5aMmR3Y21SWFNteGpiVFZzWkVkV2VrMUJNRWREVTNGSFUwbGlNMFJSUlVKRGQxVkJRVFJKUWtGUlFqaFBkQ3RuZGxoTlJRcFhMM0ZoTkVWUVRFeEJVV1JYZVM5NGVYaHZMMk15UVZKU2NDdE1aMDVLYzJWUVpWWTRkSEZaTjJkd2VUQnBVMlJqZGpGd1FXODFSelIyS3pGM1Qyc3lDalZWTURoRlZsSnFWMU0wZDBKUlF6azJZekJRUlVkM1pIRXdPVUpOVjBaT1YwSTNXWHBDUW5Kb2NtUnZXakJ1VWxaMFpVbDJVRlpTWW1aNmVFUmtSMFVLV0Vab05YVlhVV3BXT0djNVluVmpNVkpWVlZCUFNFUllWVkJRUmxoWGExZzRjVk54YmxsUVVYWkllbmRYWTJkUFJVOVBNVlZOUjBkWE1FOXpORXR4ZFFwMWFGZHVOa2hUTW5ObGFIWXdZbGR3TW1nM2VrZGtjbHAwVFhWc2NtWlFPVlZsT1RGNWJIaElVbkJUZVhkS1owYzVaWGs1VWprMVQyRnNVVlphWW5Gd0NqbHJhVlZ2VUROd2NUbG9ORGxsVm1WSmNFcEpkalpMT1dwb2FtaHpMeXRwZVdoMVp6aHFkaXRQTUVkQ1dVSjZhMFJXY1ZWdWNIaFlORzlzY0ZRd1NuSUtOSGQwU0c0NU1rZGFlbTVrQ2kwdExTMHRSVTVFSUVORlVsUkpSa2xEUVZSRkxTMHRMUzBLCiAgICBjaWRyOiAxMC4xMDAuMC4wLzE2CiAgICBuYW1lOiBqbGVib24KICBjb250YWluZXJkOiB7fQogIGluc3RhbmNlOgogICAgbG9jYWxTdG9yYWdlOiB7fQogICAgbmV0d29yazoge30KICBrdWJlbGV0OgogICAgY29uZmlnOgogICAgICBjbHVzdGVyRE5TOgogICAgICAtIDEwLjEwMC4wLjEwCiAgICBmbGFnczoKICAgIC0gLS1ub2RlLWxhYmVscz1hbHBoYS5la3NjdGwuaW8vY2x1c3Rlci1uYW1lPWpsZWJvbixhbHBoYS5la3NjdGwuaW8vbm9kZWdyb3VwLW5hbWU9amxlYm9uLXNlbGZtYW5hZ2VkCg0KLS05ZTZjZDUzOWJjNDMwYzQwNjU1NDg1MjBmOTcxMzdlM2IyMjhlNGI2MzJhODhiODAxOWMyMTUwMDQzNmQtLQ0K",
+  "TagSpecifications": [
+    {
+      "ResourceType": "instance",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "jlebon-jlebon-selfmanaged-Node"
+        }
+      ]
+    },
+    {
+      "ResourceType": "volume",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "jlebon-jlebon-selfmanaged-Node"
+        }
+      ]
+    },
+    {
+      "ResourceType": "network-interface",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "jlebon-jlebon-selfmanaged-Node"
+        }
+      ]
+    }
+  ],
+  "MetadataOptions": {
+    "HttpTokens": "required",
+    "HttpPutResponseHopLimit": 2
+  }
+}

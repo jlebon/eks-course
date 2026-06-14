@@ -1,0 +1,19 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: jlebon          # "self-managed node group"
+  region: ca-central-1
+  version: "1.36"
+
+# No managedNodeGroups — we're using nodeGroups (self-managed)
+nodeGroups:
+  - name: jlebon-selfmanaged
+    instanceType: t3.medium
+    desiredCapacity: 1       # one node is enough to learn
+    minSize: 1
+    maxSize: 2
+    amiFamily: AmazonLinux2023
+    privateNetworking: true  # nodes in private subnets
+    ssh:
+      enableSsm: true       # access the node via SSM Session Manager
